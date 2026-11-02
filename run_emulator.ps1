@@ -1,4 +1,4 @@
-# Запуск эмулятора Android TV (ATV_9) и автоматическая установка приложения
+﻿# Запуск эмулятора Android TV (ATV_9) и автоматическая установка приложения
 $env:ANDROID_HOME = "D:\Projects\AndroidSDK"
 $env:JAVA_HOME = "D:\Projects\AndroidSDK\jdk-17"
 $ADB = "D:\Projects\AndroidSDK\platform-tools\adb.exe"
@@ -10,7 +10,7 @@ Start-Process $EMU -ArgumentList "-avd", "ATV_9", "-netdelay", "none", "-netspee
 
 Write-Host "Ожидание готовности ADB..." -ForegroundColor Yellow
 & $ADB connect 127.0.0.1:5555 | Out-Null
-& $ADB wait-for-device
+& $ADB -s 127.0.0.1:5555 wait-for-device
 
 Write-Host "Ожидание полной загрузки системы Android TV..." -ForegroundColor Yellow
 while ($true) {
