@@ -19,6 +19,9 @@ $env:ANDROID_HOME = "D:\Projects\AndroidSDK"
 # Сборка Debug APK:
 .\gradlew.bat assembleDebug
 
-# Установка на ТВ / эмулятор через ADB:
-adb install app\build\outputs\apk\debug\app-debug.apk
+# Запуск локального эмулятора Android TV и автоустановка:
+.\run_emulator.ps1
+
+# Либо ручная установка на любое подключенное устройство:
+adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
