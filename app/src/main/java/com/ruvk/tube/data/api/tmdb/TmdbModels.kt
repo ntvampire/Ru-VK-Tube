@@ -1,0 +1,52 @@
+package com.ruvk.tube.data.api.tmdb
+
+import com.google.gson.annotations.SerializedName
+
+data class TmdbPageResponse<T>(
+    @SerializedName("page") val page: Int,
+    @SerializedName("results") val results: List<T>,
+    @SerializedName("total_pages") val totalPages: Int,
+    @SerializedName("total_results") val totalResults: Int
+)
+
+data class TmdbMovieDto(
+    @SerializedName("id") val id: Long,
+    @SerializedName("title") val title: String?,
+    @SerializedName("name") val name: String?,
+    @SerializedName("original_title") val originalTitle: String?,
+    @SerializedName("original_name") val originalName: String?,
+    @SerializedName("overview") val overview: String?,
+    @SerializedName("poster_path") val posterPath: String?,
+    @SerializedName("backdrop_path") val backdropPath: String?,
+    @SerializedName("release_date") val releaseDate: String?,
+    @SerializedName("first_air_date") val firstAirDate: String?,
+    @SerializedName("vote_average") val voteAverage: Double?,
+    @SerializedName("media_type") val mediaType: String?
+)
+
+data class TmdbMovieDetailsDto(
+    @SerializedName("id") val id: Long,
+    @SerializedName("title") val title: String?,
+    @SerializedName("original_title") val originalTitle: String?,
+    @SerializedName("overview") val overview: String?,
+    @SerializedName("poster_path") val posterPath: String?,
+    @SerializedName("backdrop_path") val backdropPath: String?,
+    @SerializedName("release_date") val releaseDate: String?,
+    @SerializedName("runtime") val runtime: Int?,
+    @SerializedName("vote_average") val voteAverage: Double?,
+    @SerializedName("imdb_id") val imdbId: String?
+)
+
+data class TmdbTvDetailsDto(
+    @SerializedName("id") val id: Long,
+    @SerializedName("name") val name: String?,
+    @SerializedName("original_name") val originalName: String?,
+    @SerializedName("overview") val overview: String?,
+    @SerializedName("poster_path") val posterPath: String?,
+    @SerializedName("backdrop_path") val backdropPath: String?,
+    @SerializedName("first_air_date") val firstAirDate: String?,
+    @SerializedName("episode_run_time") val episodeRunTime: List<Int>?,
+    @SerializedName("vote_average") val voteAverage: Double?,
+    @SerializedName("number_of_seasons") val numberOfSeasons: Int?,
+    @SerializedName("number_of_episodes") val numberOfEpisodes: Int?
+)
