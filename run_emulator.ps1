@@ -9,17 +9,19 @@ Write-Host "Запуск эмулятора Android TV 9 (ATV_9)..." -Foreground
 Start-Process $EMU -ArgumentList "-avd", "ATV_9", "-netdelay", "none", "-netspeed", "full"
 
 Write-Host "Ожидание готовности ADB..." -ForegroundColor Yellow
+& $ADB connect 127.0.0.1:5555 | Out-Null
 & $ADB wait-for-device
 
 Write-Host "Ожидание полной загрузки системы Android TV..." -ForegroundColor Yellow
 while ($true) {
-    $boot = (& $ADB shell getprop sys.boot_completed 2>$null)
+    & $ADB connect 127.0.0.1:5555 | Out-Null
+    $boot = (& $ADB -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>$null)
     if ($boot -and $boot.Trim() -eq "1") { break }
     Start-Sleep -Seconds 2
 }
 
 Write-Host "Эмулятор загружен! Установка Ru-VK-Tube..." -ForegroundColor Green
-& $ADB install -r $APK
+& $ADB -s 127.0.0.1:5555 install -r $APK
 
 Write-Host "Запуск Ru-VK-Tube на экране ТВ..." -ForegroundColor Green
-& $ADB shell am start -n com.ruvk.tube.debug/com.ruvk.tube.ui.main.MainActivity
+& $ADB -s 127.0.0.1:5555 shell am start -n com.ruvk.tube.debug/com.ruvk.tube.ui.main.MainActivity
