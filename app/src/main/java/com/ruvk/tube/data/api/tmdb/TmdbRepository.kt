@@ -147,26 +147,26 @@ class TmdbRepository(
         return Pair(null, null)
     }
 
-    private fun mapCertificationToRussian(raw: String): Pair<String, String> {
+    private fun mapCertificationToRussian(raw: String): Pair<String, String?> {
         val c = raw.trim().uppercase()
         return when {
             c.contains("18") || c == "R" || c == "NC-17" || c == "TV-MA" -> {
-                "18+" to "Только для совершеннолетних"
+                "18+" to null
             }
             c.contains("16") || c == "14" || c == "PG-13" || c == "TV-14" -> {
-                "16+" to "Для зрителей старше 16 лет"
+                "16+" to null
             }
             c.contains("12") || c == "PG" || c == "TV-PG" -> {
-                "12+" to "Для зрителей старше 12 лет"
+                "12+" to null
             }
             c.contains("6") || c == "TV-Y7" -> {
-                "6+" to "Для детей старше 6 лет"
+                "6+" to null
             }
             c.contains("0") || c == "G" || c == "TV-G" || c == "TV-Y" -> {
-                "0+" to "Для любой зрительской аудитории"
+                "0+" to null
             }
             else -> {
-                raw to "Возрастной ценз: $raw"
+                raw to null
             }
         }
     }

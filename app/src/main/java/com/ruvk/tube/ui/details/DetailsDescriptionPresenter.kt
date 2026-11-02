@@ -12,12 +12,14 @@ class DetailsDescriptionPresenter : AbstractDetailsDescriptionPresenter() {
 
         val subtitleParts = mutableListOf<String>()
 
-        // Возрастной рейтинг с понятной расшифровкой для пользователя
+        // Возрастной рейтинг: для цифровых (18+, 16+, 12+, 6+, 0+) выводится кратко без расшифровки
         if (!mediaItem.ageRating.isNullOrBlank()) {
-            val ageText = if (!mediaItem.ageRatingDescription.isNullOrBlank()) {
-                "${mediaItem.ageRating} (${mediaItem.ageRatingDescription})"
+            val rating = mediaItem.ageRating.trim()
+            val isDigitalRating = rating.matches(Regex("""^\d+\+?$"""))
+            val ageText = if (isDigitalRating || mediaItem.ageRatingDescription.isNullOrBlank()) {
+                if (rating.all { it.isDigit() }) "$rating+" else rating
             } else {
-                mediaItem.ageRating
+                "$rating (${mediaItem.ageRatingDescription})"
             }
             subtitleParts.add(ageText)
         }
