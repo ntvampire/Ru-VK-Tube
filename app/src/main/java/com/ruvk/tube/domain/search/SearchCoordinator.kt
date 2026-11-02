@@ -118,7 +118,7 @@ class SearchCoordinator(
                     )
                 )
 
-                if (results.size >= 12) break
+                if (results.count { it.platform == VideoPlatform.VK } >= 3) break
             }
 
             if (results.isNotEmpty()) break
@@ -189,7 +189,7 @@ class SearchCoordinator(
                     )
                 )
 
-                if (results.size >= 8) break
+                if (results.count { it.platform == VideoPlatform.VK } >= 2) break
             }
 
             if (results.isNotEmpty()) break
