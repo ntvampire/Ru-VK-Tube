@@ -102,7 +102,7 @@ class TmdbRepository(
     }
 
     companion object {
-        const val DEFAULT_API_KEY = "4f298a53e5522830ce57f3a7603272c3"
+        const val DEFAULT_API_KEY = "4e44d9029b1270a757cddc766a1bcb63"
         const val IMAGE_BASE_POSTER = "https://image.tmdb.org/t/p/w500"
         const val IMAGE_BASE_BACKDROP = "https://image.tmdb.org/t/p/original"
     }

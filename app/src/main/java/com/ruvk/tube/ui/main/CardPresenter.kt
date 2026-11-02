@@ -11,10 +11,14 @@ import com.ruvk.tube.domain.models.MediaItem
 class CardPresenter : Presenter() {
 
     override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
+        val density = parent.context.resources.displayMetrics.density
+        val widthPx = (CARD_WIDTH_DP * density).toInt()
+        val heightPx = (CARD_HEIGHT_DP * density).toInt()
+
         val cardView = ImageCardView(parent.context).apply {
             isFocusable = true
             isFocusableInTouchMode = true
-            setMainImageDimensions(CARD_WIDTH, CARD_HEIGHT)
+            setMainImageDimensions(widthPx, heightPx)
             setInfoAreaBackgroundColor(ContextCompat.getColor(context, R.color.surface_dark))
         }
         return ViewHolder(cardView)
@@ -25,7 +29,11 @@ class CardPresenter : Presenter() {
         val cardView = viewHolder.view as ImageCardView
 
         cardView.titleText = mediaItem.title
-        cardView.contentText = if (mediaItem.year > 0) "${mediaItem.year} • ★ ${String.format("%.1f", mediaItem.voteAverage)}" else "★ ${String.format("%.1f", mediaItem.voteAverage)}"
+        cardView.contentText = if (mediaItem.year > 0) {
+            "${mediaItem.year} • ★ ${String.format("%.1f", mediaItem.voteAverage)}"
+        } else {
+            "★ ${String.format("%.1f", mediaItem.voteAverage)}"
+        }
 
         if (!mediaItem.posterUrl.isNullOrBlank()) {
             cardView.mainImageView.load(mediaItem.posterUrl) {
@@ -45,7 +53,7 @@ class CardPresenter : Presenter() {
     }
 
     companion object {
-        private const val CARD_WIDTH = 190
-        private const val CARD_HEIGHT = 285
+        private const val CARD_WIDTH_DP = 160
+        private const val CARD_HEIGHT_DP = 240
     }
 }

@@ -2,6 +2,7 @@ package com.ruvk.tube.ui.main
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.leanback.app.BrowseSupportFragment
@@ -23,10 +24,10 @@ class MainFragment : BrowseSupportFragment() {
     private lateinit var rowsAdapter: ArrayObjectAdapter
     private val cardPresenter = CardPresenter()
 
-    private val historyAdapter = ArrayObjectAdapter(cardPresenter)
     private val trendingAdapter = ArrayObjectAdapter(cardPresenter)
     private val popularMoviesAdapter = ArrayObjectAdapter(cardPresenter)
     private val popularTvAdapter = ArrayObjectAdapter(cardPresenter)
+    private val historyAdapter = ArrayObjectAdapter(cardPresenter)
     private val favoritesAdapter = ArrayObjectAdapter(cardPresenter)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -41,9 +42,20 @@ class MainFragment : BrowseSupportFragment() {
         title = getString(R.string.app_name)
         headersState = HEADERS_ENABLED
         isHeadersTransitionOnBackEnabled = true
-        brandColor = ContextCompat.getColor(requireContext(), R.color.brand_primary)
+
+        // Цвет панели навигации - темный, акцент поиска - фирменный красный
+        brandColor = ContextCompat.getColor(requireContext(), R.color.surface_dark)
+        searchAffordanceColor = ContextCompat.getColor(requireContext(), R.color.brand_primary)
 
         rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
+
+        // Заранее добавляем ряды, чтобы интерфейс имел структуру сразу
+        rowsAdapter.add(ListRow(HeaderItem(0, getString(R.string.category_trending)), trendingAdapter))
+        rowsAdapter.add(ListRow(HeaderItem(1, getString(R.string.category_popular)), popularMoviesAdapter))
+        rowsAdapter.add(ListRow(HeaderItem(2, getString(R.string.category_series)), popularTvAdapter))
+        rowsAdapter.add(ListRow(HeaderItem(3, getString(R.string.category_history)), historyAdapter))
+        rowsAdapter.add(ListRow(HeaderItem(4, getString(R.string.category_favorites)), favoritesAdapter))
+
         adapter = rowsAdapter
     }
 
@@ -64,23 +76,22 @@ class MainFragment : BrowseSupportFragment() {
             try {
                 val trending = RuVkTubeApp.instance.tmdbRepository.getTrending()
                 trending.forEach { trendingAdapter.add(it) }
-                if (trending.isNotEmpty()) {
-                    rowsAdapter.add(ListRow(HeaderItem(0, getString(R.string.category_trending)), trendingAdapter))
-                }
+            } catch (e: Exception) {
+                Log.e("RuVkTube", "Failed to load trending", e)
+            }
 
+            try {
                 val movies = RuVkTubeApp.instance.tmdbRepository.getPopularMovies()
                 movies.forEach { popularMoviesAdapter.add(it) }
-                if (movies.isNotEmpty()) {
-                    rowsAdapter.add(ListRow(HeaderItem(1, getString(R.string.category_popular)), popularMoviesAdapter))
-                }
+            } catch (e: Exception) {
+                Log.e("RuVkTube", "Failed to load popular movies", e)
+            }
 
+            try {
                 val series = RuVkTubeApp.instance.tmdbRepository.getPopularTv()
                 series.forEach { popularTvAdapter.add(it) }
-                if (series.isNotEmpty()) {
-                    rowsAdapter.add(ListRow(HeaderItem(2, getString(R.string.category_series)), popularTvAdapter))
-                }
             } catch (e: Exception) {
-                // В случае ошибки сети интерфейс не падает
+                Log.e("RuVkTube", "Failed to load popular series", e)
             }
         }
 
