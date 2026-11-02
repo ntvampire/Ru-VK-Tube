@@ -1,13 +1,17 @@
 package com.ruvk.tube.data.api.vk
 
+import android.os.Build
+import android.text.Html
+import android.util.Log
 import com.google.gson.Gson
-import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.ruvk.tube.data.network.NetworkClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.FormBody
+import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.URLEncoder
-import java.util.regex.Pattern
+import java.nio.charset.Charset
 
 data class VkVideoItem(
     val oid: String,
@@ -19,133 +23,169 @@ data class VkVideoItem(
 
 data class VkStreamInfo(
     val hlsUrl: String?,
-    val directUrls: Map<String, String>, // "1080" to url, "720" to url, etc.
+    val directUrls: Map<String, String>, // "2160", "1080", "720", etc.
     val bestQuality: String
 )
 
+/**
+ * Высокопроизводительный прямой клиент для VK Video.
+ * Работает через быстрые HTTP POST запросы к al_video.php без WebView и сторонней авторизации.
+ */
 class VkClient(
+    private val okHttpClient: OkHttpClient = NetworkClient.okHttpClient,
     private val gson: Gson = Gson()
 ) {
 
-    private val videoExtRegex = Pattern.compile("""var\s+playerParams\s*=\s*(\{.*?\});\s*(?:var|function|</script>)""", Pattern.DOTALL)
-    private val mobileVideoLinkRegex = Pattern.compile("""href=["']/video(-?\d+)_(\d+)["']""")
-    private val durationRegex = Pattern.compile("""(\d+):(\d+)""")
+    companion object {
+        private const val TAG = "RuVkTube"
+        private const val ENDPOINT = "https://vk.com/al_video.php"
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        private val CP1251 = Charset.forName("windows-1251")
+    }
 
     suspend fun searchVideos(query: String): List<VkVideoItem> = withContext(Dispatchers.IO) {
-        val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val url = "https://m.vk.com/video?q=$encodedQuery&section=search"
+        val formBody = FormBody.Builder(CP1251)
+            .add("al", "1")
+            .add("act", "search_video")
+            .add("q", query)
+            .build()
 
         val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", NetworkClient.USER_AGENT)
-            .get()
+            .url(ENDPOINT)
+            .post(formBody)
+            .header("User-Agent", USER_AGENT)
+            .header("Referer", ENDPOINT)
+            .header("X-Requested-With", "XMLHttpRequest")
             .build()
 
         try {
-            NetworkClient.okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext emptyList()
-                val html = response.body?.string() ?: return@withContext emptyList()
-                parseMobileSearchHtml(html)
+            val response = okHttpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                Log.e(TAG, "VK search HTTP error ${response.code} for '$query'")
+                return@withContext emptyList()
             }
+
+            val bodyBytes = response.body?.bytes() ?: return@withContext emptyList()
+            val jsonText = String(bodyBytes, CP1251)
+
+            val items = parseSearchPayload(jsonText)
+            Log.d(TAG, "VK search for '$query': successfully returned ${items.size} videos")
+            items
         } catch (e: Exception) {
+            Log.e(TAG, "VK search network error for '$query'", e)
             emptyList()
         }
     }
 
     suspend fun resolveStream(oid: String, id: String): VkStreamInfo? = withContext(Dispatchers.IO) {
-        val embedUrl = "https://vk.com/video_ext.php?oid=$oid&id=$id"
+        val videoKey = "${oid}_${id}"
+        val formBody = FormBody.Builder(CP1251)
+            .add("al", "1")
+            .add("act", "show")
+            .add("video", videoKey)
+            .build()
 
         val request = Request.Builder()
-            .url(embedUrl)
-            .header("User-Agent", NetworkClient.USER_AGENT)
-            .get()
+            .url(ENDPOINT)
+            .post(formBody)
+            .header("User-Agent", USER_AGENT)
+            .header("Referer", ENDPOINT)
+            .header("X-Requested-With", "XMLHttpRequest")
             .build()
 
         try {
-            NetworkClient.okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                val html = response.body?.string() ?: return@withContext null
-                parsePlayerParams(html)
+            val response = okHttpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                Log.e(TAG, "VK resolveStream HTTP error ${response.code} for $videoKey")
+                return@withContext null
             }
+
+            val bodyBytes = response.body?.bytes() ?: return@withContext null
+            val jsonText = String(bodyBytes, CP1251)
+
+            parsePlayerPayload(jsonText)
         } catch (e: Exception) {
+            Log.e(TAG, "VK resolveStream error for $videoKey", e)
             null
         }
     }
 
-    private fun parseMobileSearchHtml(html: String): List<VkVideoItem> {
+    private fun parseSearchPayload(jsonText: String): List<VkVideoItem> {
         val items = mutableListOf<VkVideoItem>()
-        val matcher = mobileVideoLinkRegex.matcher(html)
-        val seen = mutableSetOf<String>()
+        try {
+            val root = JsonParser.parseString(jsonText).asJsonObject
+            val payload = root.getAsJsonArray("payload") ?: return emptyList()
+            if (payload.size() < 2) return emptyList()
 
-        while (matcher.find()) {
-            val oid = matcher.group(1) ?: continue
-            val id = matcher.group(2) ?: continue
-            val key = "${oid}_${id}"
-            if (!seen.add(key)) continue
+            val inner = payload.get(1).asJsonArray
+            if (inner.size() < 3) return emptyList()
 
-            // Извлечение окружающего текста для названия
-            val startIdx = matcher.start()
-            val chunk = html.substring(startIdx, (startIdx + 600).coerceAtMost(html.length))
-            val title = extractTitleFromChunk(chunk) ?: "Видео $key"
-            val duration = extractDurationFromChunk(chunk)
+            val dataObj = inner.get(2).asJsonObject
+            val list = dataObj.getAsJsonArray("list") ?: return emptyList()
 
-            items.add(
-                VkVideoItem(
-                    oid = oid,
-                    id = id,
-                    title = title,
-                    durationSeconds = duration,
-                    thumbUrl = null
-                )
-            )
+            for (elem in list) {
+                if (!elem.isJsonArray) continue
+                val arr = elem.asJsonArray
+                if (arr.size() < 4) continue
+
+                val oid = arr.get(0).asString
+                val id = arr.get(1).asString
+                val thumb = if (arr.get(2).isJsonPrimitive) arr.get(2).asString else null
+                val rawTitle = arr.get(3).asString
+                val cleanTitle = cleanHtmlEntities(rawTitle)
+
+                var durationSec = 0
+                if (arr.size() > 19 && arr.get(19).isJsonPrimitive && arr.get(19).asJsonPrimitive.isNumber) {
+                    durationSec = arr.get(19).asInt
+                } else if (arr.size() > 5 && arr.get(5).isJsonPrimitive) {
+                    durationSec = parseDurationString(arr.get(5).asString)
+                }
+
+                if (cleanTitle.isNotBlank()) {
+                    items.add(
+                        VkVideoItem(
+                            oid = oid,
+                            id = id,
+                            title = cleanTitle,
+                            durationSeconds = durationSec,
+                            thumbUrl = thumb
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "VK parseSearchPayload error", e)
         }
         return items
     }
 
-    private fun extractTitleFromChunk(chunk: String): String? {
-        val titleMatch = Pattern.compile("""class=["'](?:video_item__title|v_title)[^"']*["']>([^<]+)<""").matcher(chunk)
-        if (titleMatch.find()) {
-            return titleMatch.group(1)?.trim()
-        }
-        val altMatch = Pattern.compile("""alt=["']([^"']+)["']""").matcher(chunk)
-        if (altMatch.find()) {
-            return altMatch.group(1)?.trim()
-        }
-        return null
-    }
-
-    private fun extractDurationFromChunk(chunk: String): Int {
-        val match = durationRegex.matcher(chunk)
-        if (match.find()) {
-            val m = match.group(1)?.toIntOrNull() ?: 0
-            val s = match.group(2)?.toIntOrNull() ?: 0
-            return m * 60 + s
-        }
-        return 0
-    }
-
-    private fun parsePlayerParams(html: String): VkStreamInfo? {
-        val matcher = videoExtRegex.matcher(html)
-        if (!matcher.find()) return null
-        val jsonStr = matcher.group(1) ?: return null
-
+    private fun parsePlayerPayload(jsonText: String): VkStreamInfo? {
         return try {
-            val root = gson.fromJson(jsonStr, JsonObject::class.java)
-            val paramsArray = root.getAsJsonArray("params") ?: return null
-            if (paramsArray.size() == 0) return null
-            val param = paramsArray.get(0).asJsonObject
+            val root = JsonParser.parseString(jsonText).asJsonObject
+            val payload = root.getAsJsonArray("payload") ?: return null
+            if (payload.size() < 2) return null
 
+            val inner = payload.get(1).asJsonArray
+            if (inner.size() == 0) return null
+
+            val opts = inner.get(inner.size() - 1).asJsonObject
+            val player = opts.getAsJsonObject("player") ?: return null
+            val paramsArray = player.getAsJsonArray("params") ?: return null
+            if (paramsArray.size() == 0) return null
+
+            val param = paramsArray.get(0).asJsonObject
             val hls = param.get("hls")?.asString
             val directUrls = mutableMapOf<String, String>()
 
             listOf("2160", "1440", "1080", "720", "480", "360", "240").forEach { q ->
-                param.get("url$q")?.asString?.let { url ->
-                    directUrls[q] = url
+                param.get("url$q")?.asString?.let { u ->
+                    directUrls[q] = u
                 }
             }
 
             val bestQuality = when {
                 directUrls.containsKey("2160") -> "4K"
+                directUrls.containsKey("1440") -> "2K"
                 directUrls.containsKey("1080") -> "1080p"
                 directUrls.containsKey("720") -> "720p"
                 directUrls.containsKey("480") -> "480p"
@@ -159,7 +199,34 @@ class VkClient(
                 bestQuality = bestQuality
             )
         } catch (e: Exception) {
+            Log.e(TAG, "VK parsePlayerPayload error", e)
             null
+        }
+    }
+
+    private fun cleanHtmlEntities(text: String): String {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                Html.fromHtml(text, Html.FROM_HTML_MODE_LEGACY).toString().trim()
+            } else {
+                @Suppress("DEPRECATION")
+                Html.fromHtml(text).toString().trim()
+            }
+        } catch (e: Exception) {
+            text.replace("&#33;", "!")
+                .replace("&#036;", "$")
+                .replace("&quot;", "\"")
+                .replace("&amp;", "&")
+                .trim()
+        }
+    }
+
+    private fun parseDurationString(str: String): Int {
+        val parts = str.split(":").mapNotNull { it.trim().toIntOrNull() }
+        return when (parts.size) {
+            2 -> parts[0] * 60 + parts[1]
+            3 -> parts[0] * 3600 + parts[1] * 60 + parts[2]
+            else -> 0
         }
     }
 }

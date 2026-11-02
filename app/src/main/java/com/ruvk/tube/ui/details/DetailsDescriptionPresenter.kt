@@ -11,6 +11,17 @@ class DetailsDescriptionPresenter : AbstractDetailsDescriptionPresenter() {
         viewHolder.title.text = mediaItem.title
 
         val subtitleParts = mutableListOf<String>()
+
+        // Возрастной рейтинг с понятной расшифровкой для пользователя
+        if (!mediaItem.ageRating.isNullOrBlank()) {
+            val ageText = if (!mediaItem.ageRatingDescription.isNullOrBlank()) {
+                "${mediaItem.ageRating} (${mediaItem.ageRatingDescription})"
+            } else {
+                mediaItem.ageRating
+            }
+            subtitleParts.add(ageText)
+        }
+
         if (mediaItem.year > 0) subtitleParts.add(mediaItem.year.toString())
         if (mediaItem.voteAverage > 0) subtitleParts.add("★ ${String.format("%.1f", mediaItem.voteAverage)}")
         if (mediaItem.runtimeMinutes > 0) subtitleParts.add("${mediaItem.runtimeMinutes} мин")
@@ -18,7 +29,7 @@ class DetailsDescriptionPresenter : AbstractDetailsDescriptionPresenter() {
             subtitleParts.add(mediaItem.originalTitle)
         }
 
-        viewHolder.subtitle.text = subtitleParts.joinToString(" • ")
+        viewHolder.subtitle.text = subtitleParts.joinToString("   •   ")
         viewHolder.body.text = mediaItem.overview
     }
 }

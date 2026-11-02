@@ -59,7 +59,16 @@ class InternalPlayerActivity : AppCompatActivity() {
             return
         }
 
-        exoPlayer = ExoPlayer.Builder(this).build().apply {
+        val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setUserAgent(com.ruvk.tube.data.network.NetworkClient.USER_AGENT)
+            .setDefaultRequestProperties(mapOf("Referer" to "https://vk.com/"))
+
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
+            .setDataSourceFactory(httpDataSourceFactory)
+
+        exoPlayer = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().apply {
             val mediaItem = MediaItem.fromUri(streamUrl)
             setMediaItem(mediaItem)
             prepare()

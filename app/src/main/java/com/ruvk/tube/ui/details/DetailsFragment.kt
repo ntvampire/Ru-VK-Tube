@@ -126,15 +126,18 @@ class DetailsFragment : DetailsSupportFragment() {
         Toast.makeText(requireContext(), getString(R.string.searching_sources), Toast.LENGTH_SHORT).show()
 
         viewLifecycleOwner.lifecycleScope.launch {
+            val maxRes = com.ruvk.tube.player.DeviceCapabilityHelper.getMaxDisplayHeight(requireContext())
             val sources = RuVkTubeApp.instance.searchCoordinator.findMovieSources(
                 title = mediaItem.title,
                 year = mediaItem.year,
-                runtimeMinutes = mediaItem.runtimeMinutes
+                runtimeMinutes = mediaItem.runtimeMinutes,
+                maxSupportedHeight = maxRes
             )
 
             sourcesAdapter.clear()
             if (sources.isNotEmpty()) {
                 sources.forEach { sourcesAdapter.add(it) }
+                // Лучший источник по разрешению устройства отсортирован первым
                 startPlayback(sources.first())
             } else {
                 Toast.makeText(requireContext(), getString(R.string.no_sources_found), Toast.LENGTH_LONG).show()
@@ -146,14 +149,15 @@ class DetailsFragment : DetailsSupportFragment() {
         Toast.makeText(requireContext(), "Поиск трейлера...", Toast.LENGTH_SHORT).show()
 
         viewLifecycleOwner.lifecycleScope.launch {
+            val maxRes = com.ruvk.tube.player.DeviceCapabilityHelper.getMaxDisplayHeight(requireContext())
             val trailers = RuVkTubeApp.instance.searchCoordinator.findTrailers(
                 title = mediaItem.title,
-                year = mediaItem.year
+                year = mediaItem.year,
+                maxSupportedHeight = maxRes
             )
 
             if (trailers.isNotEmpty()) {
-                val trailer = trailers.first()
-                startPlayback(trailer)
+                startPlayback(trailers.first())
             } else {
                 Toast.makeText(requireContext(), "Русский трейлер не найден", Toast.LENGTH_SHORT).show()
             }

@@ -36,6 +36,8 @@ class TmdbRepository(
 
     suspend fun getMovieDetails(id: Long): MediaItem {
         val dto = api.getMovieDetails(id, apiKey)
+        val (ageRating, ageDesc) = extractMovieAgeRating(dto.releaseDates)
+
         return MediaItem(
             id = dto.id,
             title = dto.title ?: dto.originalTitle ?: "",
@@ -48,12 +50,16 @@ class TmdbRepository(
             voteAverage = dto.voteAverage ?: 0.0,
             runtimeMinutes = dto.runtime ?: 0,
             mediaType = MediaType.MOVIE,
-            imdbId = dto.imdbId
+            imdbId = dto.imdbId,
+            ageRating = ageRating,
+            ageRatingDescription = ageDesc
         )
     }
 
     suspend fun getTvDetails(id: Long): MediaItem {
         val dto = api.getTvDetails(id, apiKey)
+        val (ageRating, ageDesc) = extractTvAgeRating(dto.contentRatings)
+
         return MediaItem(
             id = dto.id,
             title = dto.name ?: dto.originalName ?: "",
@@ -65,7 +71,9 @@ class TmdbRepository(
             year = parseYear(dto.firstAirDate),
             voteAverage = dto.voteAverage ?: 0.0,
             runtimeMinutes = dto.episodeRunTime?.firstOrNull() ?: 45,
-            mediaType = MediaType.TV
+            mediaType = MediaType.TV,
+            ageRating = ageRating,
+            ageRatingDescription = ageDesc
         )
     }
 
@@ -99,6 +107,68 @@ class TmdbRepository(
     private fun parseYear(date: String?): Int {
         if (date.isNullOrBlank()) return 0
         return date.take(4).toIntOrNull() ?: 0
+    }
+
+    private fun extractMovieAgeRating(releaseDates: TmdbReleaseDatesContainer?): Pair<String?, String?> {
+        val results = releaseDates?.results ?: return Pair(null, null)
+
+        // 1. Приоритет - российская сертификация (RU)
+        val ruDates = results.firstOrNull { it.countryCode.equals("RU", ignoreCase = true) }
+        val ruCert = ruDates?.releaseDates?.firstOrNull { !it.certification.isNullOrBlank() }?.certification
+        if (!ruCert.isNullOrBlank()) {
+            return mapCertificationToRussian(ruCert)
+        }
+
+        // 2. Резерв - США (US: R, PG-13, PG, G)
+        val usDates = results.firstOrNull { it.countryCode.equals("US", ignoreCase = true) }
+        val usCert = usDates?.releaseDates?.firstOrNull { !it.certification.isNullOrBlank() }?.certification
+        if (!usCert.isNullOrBlank()) {
+            return mapCertificationToRussian(usCert)
+        }
+
+        return Pair(null, null)
+    }
+
+    private fun extractTvAgeRating(contentRatings: TmdbContentRatingsContainer?): Pair<String?, String?> {
+        val results = contentRatings?.results ?: return Pair(null, null)
+
+        // 1. Приоритет - RU
+        val ruRating = results.firstOrNull { it.countryCode.equals("RU", ignoreCase = true) }?.rating
+        if (!ruRating.isNullOrBlank()) {
+            return mapCertificationToRussian(ruRating)
+        }
+
+        // 2. Резерв - US (TV-MA, TV-14, TV-PG)
+        val usRating = results.firstOrNull { it.countryCode.equals("US", ignoreCase = true) }?.rating
+        if (!usRating.isNullOrBlank()) {
+            return mapCertificationToRussian(usRating)
+        }
+
+        return Pair(null, null)
+    }
+
+    private fun mapCertificationToRussian(raw: String): Pair<String, String> {
+        val c = raw.trim().uppercase()
+        return when {
+            c.contains("18") || c == "R" || c == "NC-17" || c == "TV-MA" -> {
+                "18+" to "Только для совершеннолетних"
+            }
+            c.contains("16") || c == "14" || c == "PG-13" || c == "TV-14" -> {
+                "16+" to "Для зрителей старше 16 лет"
+            }
+            c.contains("12") || c == "PG" || c == "TV-PG" -> {
+                "12+" to "Для зрителей старше 12 лет"
+            }
+            c.contains("6") || c == "TV-Y7" -> {
+                "6+" to "Для детей старше 6 лет"
+            }
+            c.contains("0") || c == "G" || c == "TV-G" || c == "TV-Y" -> {
+                "0+" to "Для любой зрительской аудитории"
+            }
+            else -> {
+                raw to "Возрастной ценз: $raw"
+            }
+        }
     }
 
     companion object {

@@ -22,7 +22,9 @@ data class MediaItem(
     val voteAverage: Double,
     val runtimeMinutes: Int = 0,
     val mediaType: MediaType = MediaType.MOVIE,
-    val imdbId: String? = null
+    val imdbId: String? = null,
+    val ageRating: String? = null,
+    val ageRatingDescription: String? = null
 ) : Serializable
 
 data class VideoSource(

@@ -34,7 +34,8 @@ data class TmdbMovieDetailsDto(
     @SerializedName("release_date") val releaseDate: String?,
     @SerializedName("runtime") val runtime: Int?,
     @SerializedName("vote_average") val voteAverage: Double?,
-    @SerializedName("imdb_id") val imdbId: String?
+    @SerializedName("imdb_id") val imdbId: String?,
+    @SerializedName("release_dates") val releaseDates: TmdbReleaseDatesContainer?
 )
 
 data class TmdbTvDetailsDto(
@@ -48,5 +49,28 @@ data class TmdbTvDetailsDto(
     @SerializedName("episode_run_time") val episodeRunTime: List<Int>?,
     @SerializedName("vote_average") val voteAverage: Double?,
     @SerializedName("number_of_seasons") val numberOfSeasons: Int?,
-    @SerializedName("number_of_episodes") val numberOfEpisodes: Int?
+    @SerializedName("number_of_episodes") val numberOfEpisodes: Int?,
+    @SerializedName("content_ratings") val contentRatings: TmdbContentRatingsContainer?
+)
+
+data class TmdbReleaseDatesContainer(
+    @SerializedName("results") val results: List<TmdbCountryReleaseDates>?
+)
+
+data class TmdbCountryReleaseDates(
+    @SerializedName("iso_3166_1") val countryCode: String?,
+    @SerializedName("release_dates") val releaseDates: List<TmdbCertificationItem>?
+)
+
+data class TmdbCertificationItem(
+    @SerializedName("certification") val certification: String?
+)
+
+data class TmdbContentRatingsContainer(
+    @SerializedName("results") val results: List<TmdbCountryContentRating>?
+)
+
+data class TmdbCountryContentRating(
+    @SerializedName("iso_3166_1") val countryCode: String?,
+    @SerializedName("rating") val rating: String?
 )

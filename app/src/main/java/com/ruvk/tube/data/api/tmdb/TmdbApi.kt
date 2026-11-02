@@ -30,14 +30,16 @@ interface TmdbApi {
     suspend fun getMovieDetails(
         @Path("movie_id") movieId: Long,
         @Query("api_key") apiKey: String,
-        @Query("language") language: String = "ru-RU"
+        @Query("language") language: String = "ru-RU",
+        @Query("append_to_response") appendToResponse: String = "release_dates"
     ): TmdbMovieDetailsDto
 
     @GET("tv/{tv_id}")
     suspend fun getTvDetails(
         @Path("tv_id") tvId: Long,
         @Query("api_key") apiKey: String,
-        @Query("language") language: String = "ru-RU"
+        @Query("language") language: String = "ru-RU",
+        @Query("append_to_response") appendToResponse: String = "content_ratings"
     ): TmdbTvDetailsDto
 
     @GET("search/multi")

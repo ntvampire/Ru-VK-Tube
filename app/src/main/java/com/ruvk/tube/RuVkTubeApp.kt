@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import com.ruvk.tube.data.api.rutube.RutubeClient
 import com.ruvk.tube.data.api.tmdb.TmdbRepository
-import com.ruvk.tube.data.api.vk.VkWebViewResolver
+import com.ruvk.tube.data.api.vk.VkClient
 import com.ruvk.tube.data.db.AppDatabase
 import com.ruvk.tube.domain.search.SearchCoordinator
 
@@ -19,7 +19,7 @@ class RuVkTubeApp : Application() {
     lateinit var searchCoordinator: SearchCoordinator
         private set
 
-    lateinit var vkWebViewResolver: VkWebViewResolver
+    lateinit var vkClient: VkClient
         private set
 
     override fun onCreate() {
@@ -33,10 +33,10 @@ class RuVkTubeApp : Application() {
         ).fallbackToDestructiveMigration().build()
 
         tmdbRepository = TmdbRepository()
-        vkWebViewResolver = VkWebViewResolver(this)
+        vkClient = VkClient()
         searchCoordinator = SearchCoordinator(
             rutubeClient = RutubeClient(),
-            vkResolver = vkWebViewResolver
+            vkClient = vkClient
         )
     }
 
