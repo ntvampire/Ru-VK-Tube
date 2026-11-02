@@ -22,4 +22,4 @@ Write-Host "Эмулятор загружен! Установка Ru-VK-Tube..."
 & $ADB install -r $APK
 
 Write-Host "Запуск Ru-VK-Tube на экране ТВ..." -ForegroundColor Green
-& $ADB shell am start -n com.ruvk.tube/com.ruvk.tube.ui.main.MainActivity
+& $ADB shell am start -n com.ruvk.tube.debug/com.ruvk.tube.ui.main.MainActivity
