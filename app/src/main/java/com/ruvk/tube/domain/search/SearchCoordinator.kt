@@ -2,7 +2,7 @@ package com.ruvk.tube.domain.search
 
 import android.util.Log
 import com.ruvk.tube.data.api.rutube.RutubeClient
-import com.ruvk.tube.data.api.vk.VkClient
+import com.ruvk.tube.data.api.vk.VkWebViewResolver
 import com.ruvk.tube.domain.models.VideoPlatform
 import com.ruvk.tube.domain.models.VideoSource
 import kotlinx.coroutines.async
@@ -11,7 +11,7 @@ import java.util.Locale
 
 class SearchCoordinator(
     private val rutubeClient: RutubeClient = RutubeClient(),
-    private val vkClient: VkClient = VkClient()
+    private val vkResolver: VkWebViewResolver? = null
 ) {
 
     private val movieStopWords = listOf(
@@ -50,7 +50,7 @@ class SearchCoordinator(
 
         for (q in queries) {
             val rutubeDeferred = async { rutubeClient.searchVideos(q) }
-            val vkDeferred = async { vkClient.searchVideos(q) }
+            val vkDeferred = async { vkResolver?.searchVideos(q) ?: emptyList() }
 
             val rutubeRaw = rutubeDeferred.await()
             val vkRaw = vkDeferred.await()
@@ -89,20 +89,12 @@ class SearchCoordinator(
                 if (results.size >= 8) break
             }
 
-            // 2. Фильтрация VK
+            // 2. Фильтрация и извлечение потоков VK (через Headless WebView)
             for (item in vkRaw) {
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (movieStopWords.any { lowerTitle.contains(it) }) continue
 
-                if (targetSeconds > 0 && item.durationSeconds > 0) {
-                    val minSec = (targetSeconds * 0.70).toInt()
-                    val maxSec = (targetSeconds * 1.30).toInt()
-                    if (item.durationSeconds !in minSec..maxSec) continue
-                } else if (item.durationSeconds in 1..(40 * 60)) {
-                    continue
-                }
-
-                val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
+                val streamInfo = vkResolver?.resolveStream(item.oid, item.id) ?: continue
                 val streamUrl = streamInfo.hlsUrl
                     ?: streamInfo.directUrls["1080"]
                     ?: streamInfo.directUrls["720"]
@@ -125,12 +117,14 @@ class SearchCoordinator(
                         score = score
                     )
                 )
+
+                if (results.size >= 12) break
             }
 
             if (results.isNotEmpty()) break
         }
 
-        Log.d("RuVkTube", "findMovieSources for '$title': total ${results.size} matches")
+        Log.d("RuVkTube", "findMovieSources for '$title': total ${results.size} matches (Rutube + VK)")
         results.sortedByDescending { it.score }
     }
 
@@ -143,17 +137,17 @@ class SearchCoordinator(
 
         for (q in queries) {
             val rutubeDeferred = async { rutubeClient.searchVideos(q) }
-            val vkDeferred = async { vkClient.searchVideos(q) }
+            val vkDeferred = async { vkResolver?.searchVideos(q) ?: emptyList() }
 
             val rutubeRaw = rutubeDeferred.await()
             val vkRaw = vkDeferred.await()
 
-            // Rutube
+            // Rutube Trailers
             for (item in rutubeRaw) {
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (trailerStopWords.any { lowerTitle.contains(it) }) continue
                 if (!trailerRequiredWords.any { lowerTitle.contains(it) }) continue
-                if (item.duration !in 20..360) continue // от 20 сек до 6 мин
+                if (item.duration !in 20..360) continue
 
                 val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
                 results.add(
@@ -171,14 +165,13 @@ class SearchCoordinator(
                 if (results.size >= 5) break
             }
 
-            // VK
+            // VK Trailers (Headless WebView)
             for (item in vkRaw) {
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (trailerStopWords.any { lowerTitle.contains(it) }) continue
                 if (!trailerRequiredWords.any { lowerTitle.contains(it) }) continue
-                if (item.durationSeconds !in 20..360) continue
 
-                val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
+                val streamInfo = vkResolver?.resolveStream(item.oid, item.id) ?: continue
                 val streamUrl = streamInfo.hlsUrl
                     ?: streamInfo.directUrls["1080"]
                     ?: streamInfo.directUrls["720"]
@@ -195,12 +188,14 @@ class SearchCoordinator(
                         score = 100
                     )
                 )
+
+                if (results.size >= 8) break
             }
 
             if (results.isNotEmpty()) break
         }
 
-        Log.d("RuVkTube", "findTrailers for '$title': total ${results.size} matches")
+        Log.d("RuVkTube", "findTrailers for '$title': total ${results.size} matches (Rutube + VK)")
         results
     }
 
