@@ -41,35 +41,22 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- 4. Верхняя панель категорий (Табы в стиле NUM) -->
-    <androidx.leanback.widget.HorizontalGridView
-        android:id="@+id/tabs_grid_view"
-        android:layout_width="0dp"
-        android:layout_height="44dp"
-        android:layout_marginStart="48dp"
-        android:layout_marginTop="24dp"
-        android:layout_marginEnd="48dp"
-        android:clipToPadding="false"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <!-- 5. Информационный блок текущего фильма (Spotlight) -->
+    <!-- 4. Информационный блок текущего фильма (Spotlight) -->
     <LinearLayout
         android:id="@+id/info_container"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginStart="48dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginStart="92dp"
+        android:layout_marginTop="36dp"
         android:layout_marginEnd="64dp"
-        android:layout_marginBottom="12dp"
+        android:layout_marginBottom="16dp"
         android:gravity="bottom"
         android:orientation="vertical"
         app:layout_constraintBottom_toTopOf="@+id/poster_grid_view"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tabs_grid_view"
-        app:layout_constraintWidth_max="720dp">
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintWidth_max="740dp">
 
         <!-- Название фильма -->
         <TextView
@@ -83,16 +70,16 @@
             android:shadowDy="2"
             android:shadowRadius="6"
             android:textColor="@color/text_primary"
-            android:textSize="32sp"
+            android:textSize="34sp"
             android:textStyle="bold"
-            tools:text="Матрица" />
+            tools:text="Интерстеллар" />
 
         <!-- Бейджи: Возраст, Год, Рейтинг, Хронометраж -->
         <LinearLayout
             android:id="@+id/hero_badges_layout"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="10dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -119,7 +106,7 @@
                 android:textColor="#FFC107"
                 android:textSize="14sp"
                 android:textStyle="bold"
-                tools:text="★ 8.2" />
+                tools:text="★ 8.6" />
 
             <TextView
                 android:id="@+id/badge_year"
@@ -128,7 +115,7 @@
                 android:layout_marginEnd="10dp"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp"
-                tools:text="1999" />
+                tools:text="2014" />
 
             <TextView
                 android:id="@+id/badge_runtime"
@@ -137,7 +124,7 @@
                 android:layout_marginEnd="10dp"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp"
-                tools:text="136 мин" />
+                tools:text="169 мин" />
 
             <TextView
                 android:id="@+id/badge_original_title"
@@ -147,7 +134,7 @@
                 android:maxLines="1"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp"
-                tools:text="The Matrix" />
+                tools:text="Interstellar" />
 
         </LinearLayout>
 
@@ -156,7 +143,7 @@
             android:id="@+id/hero_overview"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="12dp"
             android:ellipsize="end"
             android:lineSpacingExtra="3dp"
             android:maxLines="3"
@@ -166,14 +153,14 @@
             android:shadowRadius="4"
             android:textColor="#D5D5D5"
             android:textSize="15sp"
-            tools:text="Жизнь Томаса Андерсона разделена на две части: днём он самый обычный офисный служащий, а ночью превращается в хакера по имени Нео..." />
+            tools:text="Когда засуха, пыльные бури и вымирание растений приводят человечество к продовольственному кризису, коллектив исследователей и учёных отправляется сквозь червоточину..." />
 
         <!-- Кнопки быстрого действия (доступны по стрелке ВВЕРХ с карточки) -->
         <LinearLayout
             android:id="@+id/hero_buttons_layout"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_marginTop="16dp"
             android:orientation="horizontal">
 
             <TextView
@@ -248,20 +235,21 @@
 
     </LinearLayout>
 
-    <!-- 6. Тот самый "1 ряд" постеров (HorizontalGridView) внизу экрана -->
+    <!-- 5. Тот самый "1 ряд" постеров (HorizontalGridView) внизу экрана -->
     <androidx.leanback.widget.HorizontalGridView
         android:id="@+id/poster_grid_view"
         android:layout_width="0dp"
         android:layout_height="225dp"
+        android:layout_marginStart="80dp"
         android:layout_marginBottom="20dp"
         android:clipToPadding="false"
-        android:paddingStart="40dp"
-        android:paddingEnd="40dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="48dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <!-- 7. Индикатор загрузки -->
+    <!-- 6. Индикатор загрузки -->
     <ProgressBar
         android:id="@+id/loading_progress"
         android:layout_width="48dp"
@@ -273,7 +261,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="@+id/poster_grid_view" />
 
-    <!-- 8. Сообщение, если список пуст -->
+    <!-- 7. Сообщение, если список пуст -->
     <TextView
         android:id="@+id/empty_text"
         android:layout_width="wrap_content"
@@ -286,5 +274,48 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="@+id/poster_grid_view" />
+
+    <!-- 8. Боковое быстрое меню в стиле NUM (выдвигается при уходе влево) -->
+    <LinearLayout
+        android:id="@+id/side_menu_container"
+        android:layout_width="68dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_side_menu"
+        android:elevation="20dp"
+        android:orientation="vertical"
+        android:paddingTop="28dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Логотип / Иконка приложения -->
+        <TextView
+            android:id="@+id/menu_app_logo"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:text="📺"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/menu_app_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:alpha="0"
+            android:gravity="center"
+            android:singleLine="true"
+            android:text="Ru-VK Tube"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <!-- Вертикальный список пунктов меню -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/side_menu_recycler"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

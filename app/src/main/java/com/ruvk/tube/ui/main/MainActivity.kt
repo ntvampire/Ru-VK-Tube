@@ -1,14 +1,21 @@
 package com.ruvk.tube.ui.main
 
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
+import android.view.ViewParent
+import android.view.animation.DecelerateInterpolator
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
@@ -27,10 +34,16 @@ import kotlinx.coroutines.withContext
 class MainActivity : FragmentActivity() {
 
     private lateinit var heroBackdrop: ImageView
-    private lateinit var tabsGridView: androidx.leanback.widget.HorizontalGridView
     private lateinit var posterGridView: androidx.leanback.widget.HorizontalGridView
     private lateinit var loadingProgress: ProgressBar
     private lateinit var emptyText: TextView
+
+    // Боковое меню (NUM-style)
+    private lateinit var sideMenuContainer: LinearLayout
+    private lateinit var menuAppTitle: TextView
+    private lateinit var sideMenuRecycler: RecyclerView
+    private lateinit var sideMenuAdapter: NumSideMenuAdapter
+    private var isMenuExpanded = false
 
     // Элементы информационного блока (Spotlight)
     private lateinit var heroTitle: TextView
@@ -47,7 +60,6 @@ class MainActivity : FragmentActivity() {
     private lateinit var btnDetails: TextView
     private lateinit var btnFavorite: TextView
 
-    private lateinit var categoryAdapter: NumCategoryAdapter
     private lateinit var posterAdapter: NumPosterAdapter
 
     private var currentMediaItem: MediaItem? = null
@@ -59,17 +71,21 @@ class MainActivity : FragmentActivity() {
         setContentView(R.layout.activity_main)
 
         initViews()
-        setupAdapters()
+        setupSideMenu()
+        setupPosterGrid()
         setupButtonListeners()
         loadCategory(NumCategory.TRENDING)
     }
 
     private fun initViews() {
         heroBackdrop = findViewById(R.id.hero_backdrop)
-        tabsGridView = findViewById(R.id.tabs_grid_view)
         posterGridView = findViewById(R.id.poster_grid_view)
         loadingProgress = findViewById(R.id.loading_progress)
         emptyText = findViewById(R.id.empty_text)
+
+        sideMenuContainer = findViewById(R.id.side_menu_container)
+        menuAppTitle = findViewById(R.id.menu_app_title)
+        sideMenuRecycler = findViewById(R.id.side_menu_recycler)
 
         heroTitle = findViewById(R.id.hero_title)
         badgeAge = findViewById(R.id.badge_age)
@@ -84,32 +100,77 @@ class MainActivity : FragmentActivity() {
         btnDetails = findViewById(R.id.btn_details)
         btnFavorite = findViewById(R.id.btn_favorite)
 
-        // Настройка HorizontalGridView для ТВ
+        // Настройка HorizontalGridView
         posterGridView.setNumRows(1)
-        tabsGridView.setNumRows(1)
 
-        // Фокус с ряда постеров при стрелке ВВЕРХ идет на кнопку "Смотреть"
+        // Связка фокуса с пульта
         posterGridView.nextFocusUpId = R.id.btn_watch
+        posterGridView.nextFocusLeftId = R.id.side_menu_recycler
+
         btnWatch.nextFocusDownId = R.id.poster_grid_view
         btnTrailer.nextFocusDownId = R.id.poster_grid_view
         btnDetails.nextFocusDownId = R.id.poster_grid_view
         btnFavorite.nextFocusDownId = R.id.poster_grid_view
+        btnWatch.nextFocusLeftId = R.id.side_menu_recycler
 
-        // С кнопок при стрелке ВВЕРХ идет на панель вкладок
-        btnWatch.nextFocusUpId = R.id.tabs_grid_view
-        btnTrailer.nextFocusUpId = R.id.tabs_grid_view
-        btnDetails.nextFocusUpId = R.id.tabs_grid_view
-        btnFavorite.nextFocusUpId = R.id.tabs_grid_view
-
-        tabsGridView.nextFocusDownId = R.id.btn_watch
+        sideMenuRecycler.nextFocusRightId = R.id.poster_grid_view
     }
 
-    private fun setupAdapters() {
-        categoryAdapter = NumCategoryAdapter { category ->
-            loadCategory(category)
-        }
-        tabsGridView.adapter = categoryAdapter
+    private fun setupSideMenu() {
+        sideMenuRecycler.layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
 
+        sideMenuAdapter = NumSideMenuAdapter(
+            onItemSelected = { category ->
+                loadCategory(category)
+                posterGridView.post {
+                    posterGridView.requestFocus()
+                }
+            },
+            onMenuFocusChanged = { _ ->
+                // Фокус отслеживается через глобальный слушатель
+            }
+        )
+        sideMenuRecycler.adapter = sideMenuAdapter
+
+        // Глобальный слушатель фокуса для плавной анимации раскрытия/сворачивания меню
+        window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus ->
+            val hasFocusInMenu = isViewDescendant(newFocus, sideMenuContainer)
+            setMenuExpanded(hasFocusInMenu)
+        }
+    }
+
+    private fun isViewDescendant(view: View?, parent: View): Boolean {
+        var current: ViewParent? = view?.parent
+        while (current != null) {
+            if (current == parent) return true
+            current = current.parent
+        }
+        return false
+    }
+
+    private fun setMenuExpanded(expanded: Boolean) {
+        if (isMenuExpanded == expanded) return
+        isMenuExpanded = expanded
+
+        val startWidth = sideMenuContainer.width
+        val targetWidth = if (expanded) 220.dpToPx() else 68.dpToPx()
+
+        ValueAnimator.ofInt(startWidth, targetWidth).apply {
+            duration = 180
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { va ->
+                val w = va.animatedValue as Int
+                sideMenuContainer.layoutParams.width = w
+                sideMenuContainer.requestLayout()
+            }
+            start()
+        }
+
+        menuAppTitle.animate().alpha(if (expanded) 1.0f else 0.0f).setDuration(150).start()
+        sideMenuAdapter.isExpanded = expanded
+    }
+
+    private fun setupPosterGrid() {
         posterAdapter = NumPosterAdapter(
             onItemFocused = { item ->
                 updateHeroSpotlight(item)
@@ -293,7 +354,7 @@ class MainActivity : FragmentActivity() {
                     }
                 }
             } catch (e: Exception) {
-                // Игнорируем сетевые сбои дозагрузки деталей
+                // Игнорируем ошибки фоновой подгрузки
             }
         }
     }
@@ -408,4 +469,15 @@ class MainActivity : FragmentActivity() {
         badgeOriginalTitle.visibility = View.GONE
         heroOverview.text = ""
     }
+
+    override fun onBackPressed() {
+        // Если фокус в боковом меню, кнопка Назад возвращает фокус на ряд постеров
+        if (isViewDescendant(currentFocus, sideMenuContainer)) {
+            posterGridView.requestFocus()
+            return
+        }
+        super.onBackPressed()
+    }
+
+    private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()
 }
