@@ -45,6 +45,16 @@ android {
         buildConfig = true
         viewBinding = true
     }
+
+    applicationVariants.all {
+        val variantName = name
+        outputs.all {
+            val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            if (output != null && variantName == "release") {
+                output.outputFileName = "Ru-VK-Tube-${defaultConfig.versionName}.apk"
+            }
+        }
+    }
 }
 
 dependencies {
