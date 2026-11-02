@@ -41,6 +41,7 @@ class DetailsActivity : FragmentActivity() {
     private lateinit var btnFavorite: TextView
 
     private lateinit var sourcesHeader: TextView
+    private lateinit var sourcesFrame: View
     private lateinit var sourcesGridView: androidx.leanback.widget.HorizontalGridView
     private lateinit var sourcesProgressLayout: LinearLayout
     private lateinit var sourcesEmptyText: TextView
@@ -50,7 +51,6 @@ class DetailsActivity : FragmentActivity() {
     private var mediaItem: MediaItem? = null
     private var isFavorite = false
     private var isSearchingSources = false
-    private var autoPlayOnSourcesLoaded = false
     private var sourcesList = listOf<VideoSource>()
     private var searchSourcesJob: Job? = null
 
@@ -70,7 +70,6 @@ class DetailsActivity : FragmentActivity() {
         setupListeners()
         bindMediaItem(item)
         checkFavoriteStatus(item.id)
-        loadSources(item)
     }
 
     private fun initViews() {
@@ -89,9 +88,14 @@ class DetailsActivity : FragmentActivity() {
         btnFavorite = findViewById(R.id.btn_favorite)
 
         sourcesHeader = findViewById(R.id.sources_header)
+        sourcesFrame = findViewById(R.id.sources_frame)
         sourcesGridView = findViewById(R.id.sources_grid_view)
         sourcesProgressLayout = findViewById(R.id.sources_progress_layout)
         sourcesEmptyText = findViewById(R.id.sources_empty_text)
+
+        // По умолчанию полка источников скрыта до нажатия кнопки "Смотреть"
+        sourcesHeader.visibility = View.GONE
+        sourcesFrame.visibility = View.GONE
 
         // Настройка полки источников (1 ряд)
         sourcesGridView.setNumRows(1)
@@ -123,12 +127,15 @@ class DetailsActivity : FragmentActivity() {
         btnWatch.setOnClickListener {
             val item = mediaItem ?: return@setOnClickListener
             if (sourcesList.isNotEmpty()) {
-                startPlayback(sourcesList.first())
+                // Если источники уже найдены - переводим курсор на первое видео
+                sourcesGridView.post {
+                    sourcesGridView.setSelectedPosition(0)
+                    sourcesGridView.requestFocus()
+                }
             } else if (isSearchingSources) {
-                autoPlayOnSourcesLoaded = true
-                Toast.makeText(this, "Поиск лучшего источника...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Идет поиск видео...", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, getString(R.string.no_sources_found), Toast.LENGTH_LONG).show()
+                searchSourcesAndFocus(item)
             }
         }
 
@@ -225,8 +232,11 @@ class DetailsActivity : FragmentActivity() {
         }
     }
 
-    private fun loadSources(item: MediaItem) {
+    private fun searchSourcesAndFocus(item: MediaItem) {
         isSearchingSources = true
+        sourcesHeader.visibility = View.VISIBLE
+        sourcesHeader.text = "Источники"
+        sourcesFrame.visibility = View.VISIBLE
         sourcesProgressLayout.visibility = View.VISIBLE
         sourcesEmptyText.visibility = View.GONE
         sourcesGridView.visibility = View.GONE
@@ -252,18 +262,16 @@ class DetailsActivity : FragmentActivity() {
                 sourcesHeader.text = "Источники (${sources.size})"
                 sourceAdapter.submitList(sources)
 
-                if (autoPlayOnSourcesLoaded) {
-                    autoPlayOnSourcesLoaded = false
-                    startPlayback(sources.first())
+                // Фокусируем курсор на первом найденном видео в панели источников
+                sourcesGridView.post {
+                    sourcesGridView.setSelectedPosition(0)
+                    sourcesGridView.requestFocus()
                 }
             } else {
                 sourcesGridView.visibility = View.GONE
                 sourcesEmptyText.visibility = View.VISIBLE
                 sourcesHeader.text = "Источники"
-                if (autoPlayOnSourcesLoaded) {
-                    autoPlayOnSourcesLoaded = false
-                    Toast.makeText(this@DetailsActivity, getString(R.string.no_sources_found), Toast.LENGTH_LONG).show()
-                }
+                Toast.makeText(this@DetailsActivity, getString(R.string.no_sources_found), Toast.LENGTH_LONG).show()
             }
         }
     }

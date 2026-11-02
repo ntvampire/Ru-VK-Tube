@@ -69,11 +69,11 @@ class SearchCoordinator(
         }
 
         for (q in queries) {
-            val rutubeDeferred = async { rutubeClient.searchVideos(q) }
-            val vkDeferred = async { vkClient.searchVideos(q) }
+            val rutubeDeferred = if (rutubeResults.size < 10) async { rutubeClient.searchVideos(q) } else null
+            val vkDeferred = if (vkResults.size < 10) async { vkClient.searchVideos(q) } else null
 
-            val rutubeRaw = rutubeDeferred.await()
-            val vkRaw = vkDeferred.await()
+            val rutubeRaw = rutubeDeferred?.await() ?: emptyList()
+            val vkRaw = vkDeferred?.await() ?: emptyList()
 
             // 1. Фильтрация и извлечение потоков Rutube (до 10 видео)
             for (item in rutubeRaw) {
@@ -83,10 +83,10 @@ class SearchCoordinator(
                 if (!isTitleRelevant(item.title, title, originalTitle)) continue
 
                 if (targetSeconds > 0) {
-                    val minSec = (targetSeconds * 0.55).toInt()
-                    val maxSec = (targetSeconds * 1.45).toInt()
+                    val minSec = (targetSeconds * 0.50).toInt()
+                    val maxSec = (targetSeconds * 1.50).toInt()
                     if (item.duration !in minSec..maxSec) continue
-                } else if (item.duration < 40 * 60) {
+                } else if (item.duration < 35 * 60) {
                     continue
                 }
 
@@ -118,12 +118,12 @@ class SearchCoordinator(
                 if (movieStopWords.any { lowerTitle.contains(it) }) continue
                 if (!isTitleRelevant(item.title, title, originalTitle)) continue
 
-                // Проверка хронометража: отсекаем короткие ролики и клипы
+                // Проверка хронометража: отсекаем ролики, не подходящие под фильм
                 if (targetSeconds > 0) {
-                    val minSec = (targetSeconds * 0.55).toInt()
-                    val maxSec = (targetSeconds * 1.45).toInt()
-                    if (item.durationSeconds !in minSec..maxSec) continue
-                } else if (item.durationSeconds < 40 * 60) {
+                    val minSec = (targetSeconds * 0.50).toInt()
+                    val maxSec = (targetSeconds * 1.50).toInt()
+                    if (item.durationSeconds > 0 && item.durationSeconds !in minSec..maxSec) continue
+                } else if (item.durationSeconds in 1..(35 * 60)) {
                     continue
                 }
 
@@ -154,7 +154,8 @@ class SearchCoordinator(
                 }
             }
 
-            if (rutubeResults.isNotEmpty() || vkResults.isNotEmpty()) break
+            // Если оба сервиса нашли источники, можно завершить цикл запросов досрочно
+            if (rutubeResults.isNotEmpty() && vkResults.isNotEmpty()) break
         }
 
         val allResults = (rutubeResults + vkResults).sortedByDescending { it.score }
@@ -177,11 +178,11 @@ class SearchCoordinator(
         )
 
         for (q in queries) {
-            val rutubeDeferred = async { rutubeClient.searchVideos(q) }
-            val vkDeferred = async { vkClient.searchVideos(q) }
+            val rutubeDeferred = if (rutubeTrailers.size < 10) async { rutubeClient.searchVideos(q) } else null
+            val vkDeferred = if (vkTrailers.size < 10) async { vkClient.searchVideos(q) } else null
 
-            val rutubeRaw = rutubeDeferred.await()
-            val vkRaw = vkDeferred.await()
+            val rutubeRaw = rutubeDeferred?.await() ?: emptyList()
+            val vkRaw = vkDeferred?.await() ?: emptyList()
 
             // Rutube Trailers (до 10 штук)
             for (item in rutubeRaw) {
@@ -216,7 +217,7 @@ class SearchCoordinator(
                 if (trailerStopWords.any { lowerTitle.contains(it) }) continue
                 if (!trailerRequiredWords.any { lowerTitle.contains(it) }) continue
                 if (!isTitleRelevant(item.title, title, originalTitle)) continue
-                if (item.durationSeconds !in 20..360) continue
+                if (item.durationSeconds in 1..19 || item.durationSeconds > 400) continue
 
                 val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
                 val streamUrl = streamInfo.hlsUrl
@@ -240,7 +241,7 @@ class SearchCoordinator(
                 )
             }
 
-            if (rutubeTrailers.isNotEmpty() || vkTrailers.isNotEmpty()) break
+            if (rutubeTrailers.isNotEmpty() && vkTrailers.isNotEmpty()) break
         }
 
         val allTrailers = (rutubeTrailers + vkTrailers).sortedByDescending { it.score }
@@ -254,6 +255,7 @@ class SearchCoordinator(
      */
     private fun isTitleRelevant(videoTitle: String, movieTitle: String, originalTitle: String? = null): Boolean {
         val cleanVideo = videoTitle.lowercase(Locale.ROOT)
+            .replace('ё', 'е')
             .replace(Regex("[^a-zа-я0-9\\s]"), " ")
             .trim()
 
@@ -269,12 +271,13 @@ class SearchCoordinator(
 
         for (targetTitle in checkTitles) {
             val cleanTarget = targetTitle.lowercase(Locale.ROOT)
+                .replace('ё', 'е')
                 .replace(Regex("[^a-zа-я0-9\\s]"), " ")
                 .trim()
 
             if (cleanTarget.isBlank()) continue
 
-            // 1. Точное вхождение целевого названия
+            // 1. Точное вхождение целевого названия целиком
             if (cleanVideo.contains(cleanTarget)) {
                 return true
             }
@@ -286,17 +289,14 @@ class SearchCoordinator(
 
             if (keywords.isEmpty()) continue
 
-            if (keywords.size == 1) {
-                // Если название состоит из 1 слова (например "Интерстеллар", "Гладиатор", "Матрица"),
-                // то это слово ОБЯЗАНО присутствовать в названии видео
-                if (cleanVideo.contains(keywords.first())) {
+            val firstKeyword = keywords.first()
+            // Если хотя бы первое (главное) ключевое слово есть в видео:
+            if (cleanVideo.contains(firstKeyword)) {
+                if (keywords.size == 1) {
                     return true
                 }
-            } else {
-                // Если несколько слов: требуем совпадения ключевых слов
                 val matchedCount = keywords.count { cleanVideo.contains(it) }
-                val requiredMatches = if (keywords.size <= 2) keywords.size else (keywords.size * 0.7).toInt().coerceAtLeast(2)
-                if (matchedCount >= requiredMatches) {
+                if (matchedCount >= (keywords.size / 2).coerceAtLeast(1)) {
                     return true
                 }
             }
@@ -343,10 +343,8 @@ class SearchCoordinator(
         // 3. Автовыбор по разрешению устройства
         val qualityHeight = DeviceCapabilityHelper.qualityToHeight(quality)
         if (qualityHeight <= maxSupportedHeight) {
-            // Максимально поддерживаемое устройством разрешение получает наивысший приоритет
-            score += (qualityHeight / 10) // 2160p -> +216, 1080p -> +108, 720p -> +72
+            score += (qualityHeight / 10)
         } else {
-            // Разрешение выше экрана устройства: может даунскейлиться, но нативное разрешение в приоритете
             score += ((maxSupportedHeight / 10) - 20)
         }
 

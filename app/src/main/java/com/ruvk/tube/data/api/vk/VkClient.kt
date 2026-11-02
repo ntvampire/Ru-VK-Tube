@@ -135,10 +135,14 @@ class VkClient(
                 val cleanTitle = cleanHtmlEntities(rawTitle)
 
                 var durationSec = 0
-                if (arr.size() > 19 && arr.get(19).isJsonPrimitive && arr.get(19).asJsonPrimitive.isNumber) {
-                    durationSec = arr.get(19).asInt
-                } else if (arr.size() > 5 && arr.get(5).isJsonPrimitive) {
+                if (arr.size() > 5 && arr.get(5).isJsonPrimitive) {
                     durationSec = parseDurationString(arr.get(5).asString)
+                }
+                if (durationSec == 0 && arr.size() > 14 && arr.get(14).isJsonObject) {
+                    val durObj = arr.get(14).asJsonObject
+                    durObj.get("duration")?.asString?.let { textDur ->
+                        durationSec = parseRussianDurationText(textDur)
+                    }
                 }
 
                 if (cleanTitle.isNotBlank()) {
@@ -222,11 +226,33 @@ class VkClient(
     }
 
     private fun parseDurationString(str: String): Int {
-        val parts = str.split(":").mapNotNull { it.trim().toIntOrNull() }
+        val trimmed = str.trim()
+        val asInt = trimmed.toIntOrNull()
+        if (asInt != null && asInt > 0) return asInt
+
+        val parts = trimmed.split(":").mapNotNull { it.trim().toIntOrNull() }
         return when (parts.size) {
+            1 -> parts[0]
             2 -> parts[0] * 60 + parts[1]
             3 -> parts[0] * 3600 + parts[1] * 60 + parts[2]
             else -> 0
         }
+    }
+
+    private fun parseRussianDurationText(text: String): Int {
+        var total = 0
+        val hoursMatch = Regex("(\\d+)\\s*(?:час|ч)").find(text)
+        if (hoursMatch != null) {
+            total += (hoursMatch.groupValues[1].toIntOrNull() ?: 0) * 3600
+        }
+        val minMatch = Regex("(\\d+)\\s*(?:мин|м)").find(text)
+        if (minMatch != null) {
+            total += (minMatch.groupValues[1].toIntOrNull() ?: 0) * 60
+        }
+        val secMatch = Regex("(\\d+)\\s*(?:сек|с)").find(text)
+        if (secMatch != null) {
+            total += (secMatch.groupValues[1].toIntOrNull() ?: 0)
+        }
+        return total
     }
 }

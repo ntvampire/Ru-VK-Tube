@@ -245,7 +245,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 6. Заголовок полки источников -->
+    <!-- 6. Заголовок полки источников (скрыт по умолчанию) -->
     <TextView
         android:id="@+id/sources_header"
         android:layout_width="wrap_content"
@@ -256,15 +256,17 @@
         android:textColor="@color/text_primary"
         android:textSize="16sp"
         android:textStyle="bold"
+        android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@+id/sources_frame"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <!-- 7. Контейнер полки источников видео -->
+    <!-- 7. Контейнер полки источников видео (скрыт по умолчанию) -->
     <FrameLayout
         android:id="@+id/sources_frame"
         android:layout_width="0dp"
         android:layout_height="115dp"
         android:layout_marginBottom="24dp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">

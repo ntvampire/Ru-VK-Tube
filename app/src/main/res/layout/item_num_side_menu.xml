@@ -17,21 +17,23 @@
     android:paddingStart="14dp"
     android:paddingEnd="14dp">
 
-    <!-- Векторная монохромная иконка пункта меню -->
+    <!-- Векторная монохромная иконка пункта меню (наследует фокус от контейнера) -->
     <ImageView
         android:id="@+id/menu_icon"
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:layout_gravity="center_vertical"
         android:contentDescription="@string/app_name"
+        android:duplicateParentState="true"
         app:tint="@color/color_menu_item_icon" />
 
-    <!-- Название пункта меню -->
+    <!-- Название пункта меню (наследует фокус от контейнера) -->
     <TextView
         android:id="@+id/menu_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
+        android:duplicateParentState="true"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/color_menu_item_text"
