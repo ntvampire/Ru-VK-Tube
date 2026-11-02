@@ -87,9 +87,23 @@ class MainActivity : FragmentActivity() {
         // Настройка HorizontalGridView
         posterGridView.setNumRows(1)
 
-        // Навигация с пульта (переход влево в боковое меню)
-        posterGridView.nextFocusLeftId = R.id.side_menu_recycler
-        sideMenuRecycler.nextFocusRightId = R.id.poster_grid_view
+        // Перехват DPAD_LEFT на первом постере для перехода в боковое меню
+        posterGridView.setOnKeyInterceptListener { event ->
+            if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                if (posterGridView.selectedPosition <= 0) {
+                    val targetPos = sideMenuAdapter.selectedCategory.ordinal
+                    val targetHolder = sideMenuRecycler.findViewHolderForAdapterPosition(targetPos)
+                    val targetView = targetHolder?.itemView
+                        ?: sideMenuRecycler.layoutManager?.findViewByPosition(targetPos)
+                        ?: sideMenuRecycler.layoutManager?.findViewByPosition(0)
+
+                    if (targetView != null && targetView.requestFocus()) {
+                        return@setOnKeyInterceptListener true
+                    }
+                }
+            }
+            false
+        }
     }
 
     private fun setupSideMenu() {
@@ -104,6 +118,9 @@ class MainActivity : FragmentActivity() {
             },
             onMenuFocusChanged = { _ ->
                 // Фокус отслеживается через глобальный слушатель
+            },
+            onRightNavigate = {
+                posterGridView.requestFocus()
             }
         )
         sideMenuRecycler.adapter = sideMenuAdapter

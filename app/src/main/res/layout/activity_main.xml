@@ -211,18 +211,20 @@
         app:layout_constraintTop_toTopOf="parent">
 
         <!-- Логотип / Иконка приложения -->
-        <TextView
+        <ImageView
             android:id="@+id/menu_app_logo"
-            android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:gravity="center"
-            android:text="📺"
-            android:textSize="22sp" />
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="center_horizontal"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/ic_movies"
+            app:tint="@color/brand_primary" />
 
         <TextView
             android:id="@+id/menu_app_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
             android:layout_marginBottom="24dp"
             android:alpha="0"
             android:gravity="center"
@@ -236,7 +238,9 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/side_menu_recycler"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:descendantFocusability="afterDescendants"
+            android:focusable="false" />
 
     </LinearLayout>
 

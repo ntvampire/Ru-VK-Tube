@@ -238,6 +238,7 @@ class DetailsActivity : FragmentActivity() {
                 title = item.title,
                 year = item.year,
                 runtimeMinutes = item.runtimeMinutes,
+                originalTitle = item.originalTitle,
                 maxSupportedHeight = maxRes
             )
 
@@ -275,6 +276,7 @@ class DetailsActivity : FragmentActivity() {
             val trailers = RuVkTubeApp.instance.searchCoordinator.findTrailers(
                 title = item.title,
                 year = item.year,
+                originalTitle = item.originalTitle,
                 maxSupportedHeight = maxRes
             )
 
@@ -346,7 +348,13 @@ class DetailsActivity : FragmentActivity() {
     }
 
     private fun updateFavoriteButton() {
-        btnFavorite.text = if (isFavorite) "💔  В избранном" else "❤️  В избранное"
+        if (isFavorite) {
+            btnFavorite.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_favorites, 0, 0, 0)
+            btnFavorite.text = "В избранном"
+        } else {
+            btnFavorite.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_favorite_border, 0, 0, 0)
+            btnFavorite.text = "В избранное"
+        }
     }
 
     companion object {

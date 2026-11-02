@@ -17,11 +17,14 @@ class SearchCoordinator(
 
     private val movieStopWords = listOf(
         "трейлер", "тизер", "trailer", "teaser", "обзор", "реакция", "разбор",
-        "саундтрек", "ost", "клип", "отрывок", "сцена", "съемки", "со съемок", "пародия"
+        "саундтрек", "ost", "клип", "отрывок", "сцена", "съемки", "со съемок", "пародия",
+        "shorts", "шортс", "тикток", "tiktok", "reels", "рилс", "смешные моменты",
+        "лучшие моменты", "нарезка", "фрагмент", "эдиты", "edit", "эдит", "спойлеры"
     )
 
     private val trailerStopWords = listOf(
-        "обзор", "разбор", "реакция", "пародия", "саундтрек", "фильм целиком", "полный фильм"
+        "обзор", "разбор", "реакция", "пародия", "саундтрек", "фильм целиком", "полный фильм",
+        "смотреть онлайн", "фильм полностью", "серия"
     )
 
     private val trailerRequiredWords = listOf(
@@ -47,13 +50,23 @@ class SearchCoordinator(
         title: String,
         year: Int,
         runtimeMinutes: Int,
+        originalTitle: String? = null,
         maxSupportedHeight: Int = 1080
     ): List<VideoSource> = coroutineScope {
         val rutubeResults = mutableListOf<VideoSource>()
         val vkResults = mutableListOf<VideoSource>()
         val targetSeconds = runtimeMinutes * 60
 
-        val queries = if (year > 0) listOf("$title $year", title) else listOf(title)
+        val queries = mutableListOf<String>()
+        if (year > 0) {
+            queries.add("$title $year")
+            queries.add("$title фильм")
+        }
+        queries.add(title)
+        if (!originalTitle.isNullOrBlank() && originalTitle != title) {
+            if (year > 0) queries.add("$originalTitle $year")
+            queries.add(originalTitle)
+        }
 
         for (q in queries) {
             val rutubeDeferred = async { rutubeClient.searchVideos(q) }
@@ -67,10 +80,11 @@ class SearchCoordinator(
                 if (rutubeResults.size >= 10) break
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (movieStopWords.any { lowerTitle.contains(it) }) continue
+                if (!isTitleRelevant(item.title, title, originalTitle)) continue
 
                 if (targetSeconds > 0) {
-                    val minSec = (targetSeconds * 0.70).toInt()
-                    val maxSec = (targetSeconds * 1.30).toInt()
+                    val minSec = (targetSeconds * 0.55).toInt()
+                    val maxSec = (targetSeconds * 1.45).toInt()
                     if (item.duration !in minSec..maxSec) continue
                 } else if (item.duration < 40 * 60) {
                     continue
@@ -81,18 +95,20 @@ class SearchCoordinator(
                 val voiceover = detectVoiceover(lowerTitle)
                 val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight)
 
-                rutubeResults.add(
-                    VideoSource(
-                        platform = VideoPlatform.RUTUBE,
-                        title = item.title,
-                        streamUrl = streamUrl,
-                        quality = quality,
-                        durationSeconds = item.duration,
-                        voiceover = voiceover,
-                        isTrailer = false,
-                        score = score
+                if (rutubeResults.none { it.streamUrl == streamUrl }) {
+                    rutubeResults.add(
+                        VideoSource(
+                            platform = VideoPlatform.RUTUBE,
+                            title = item.title,
+                            streamUrl = streamUrl,
+                            quality = quality,
+                            durationSeconds = item.duration,
+                            voiceover = voiceover,
+                            isTrailer = false,
+                            score = score
+                        )
                     )
-                )
+                }
             }
 
             // 2. Фильтрация и извлечение потоков VK (до 10 видео)
@@ -100,6 +116,16 @@ class SearchCoordinator(
                 if (vkResults.size >= 10) break
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (movieStopWords.any { lowerTitle.contains(it) }) continue
+                if (!isTitleRelevant(item.title, title, originalTitle)) continue
+
+                // Проверка хронометража: отсекаем короткие ролики и клипы
+                if (targetSeconds > 0) {
+                    val minSec = (targetSeconds * 0.55).toInt()
+                    val maxSec = (targetSeconds * 1.45).toInt()
+                    if (item.durationSeconds !in minSec..maxSec) continue
+                } else if (item.durationSeconds < 40 * 60) {
+                    continue
+                }
 
                 val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
                 val streamUrl = streamInfo.hlsUrl
@@ -112,18 +138,20 @@ class SearchCoordinator(
                 val voiceover = detectVoiceover(lowerTitle)
                 val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight)
 
-                vkResults.add(
-                    VideoSource(
-                        platform = VideoPlatform.VK,
-                        title = item.title,
-                        streamUrl = streamUrl,
-                        quality = quality,
-                        durationSeconds = item.durationSeconds,
-                        voiceover = voiceover,
-                        isTrailer = false,
-                        score = score
+                if (vkResults.none { it.streamUrl == streamUrl }) {
+                    vkResults.add(
+                        VideoSource(
+                            platform = VideoPlatform.VK,
+                            title = item.title,
+                            streamUrl = streamUrl,
+                            quality = quality,
+                            durationSeconds = item.durationSeconds,
+                            voiceover = voiceover,
+                            isTrailer = false,
+                            score = score
+                        )
                     )
-                )
+                }
             }
 
             if (rutubeResults.isNotEmpty() || vkResults.isNotEmpty()) break
@@ -137,6 +165,7 @@ class SearchCoordinator(
     suspend fun findTrailers(
         title: String,
         year: Int,
+        originalTitle: String? = null,
         maxSupportedHeight: Int = 1080
     ): List<VideoSource> = coroutineScope {
         val rutubeTrailers = mutableListOf<VideoSource>()
@@ -160,6 +189,7 @@ class SearchCoordinator(
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (trailerStopWords.any { lowerTitle.contains(it) }) continue
                 if (!trailerRequiredWords.any { lowerTitle.contains(it) }) continue
+                if (!isTitleRelevant(item.title, title, originalTitle)) continue
                 if (item.duration !in 20..360) continue
 
                 val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
@@ -185,6 +215,8 @@ class SearchCoordinator(
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (trailerStopWords.any { lowerTitle.contains(it) }) continue
                 if (!trailerRequiredWords.any { lowerTitle.contains(it) }) continue
+                if (!isTitleRelevant(item.title, title, originalTitle)) continue
+                if (item.durationSeconds !in 20..360) continue
 
                 val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
                 val streamUrl = streamInfo.hlsUrl
@@ -214,6 +246,63 @@ class SearchCoordinator(
         val allTrailers = (rutubeTrailers + vkTrailers).sortedByDescending { it.score }
         Log.d("RuVkTube", "findTrailers for '$title': Rutube=${rutubeTrailers.size}, VK=${vkTrailers.size}")
         allTrailers
+    }
+
+    /**
+     * Проверяет, что видео действительно относится к запрашиваемому фильму/сериалу,
+     * а не является случайным роликом или клипом со схожими словами.
+     */
+    private fun isTitleRelevant(videoTitle: String, movieTitle: String, originalTitle: String? = null): Boolean {
+        val cleanVideo = videoTitle.lowercase(Locale.ROOT)
+            .replace(Regex("[^a-zа-я0-9\\s]"), " ")
+            .trim()
+
+        val checkTitles = mutableListOf(movieTitle)
+        if (!originalTitle.isNullOrBlank() && originalTitle != movieTitle) {
+            checkTitles.add(originalTitle)
+        }
+
+        val stopPrepositions = setOf(
+            "в", "на", "и", "с", "по", "из", "о", "об", "к", "за", "от", "для", "до", "без",
+            "the", "a", "an", "of", "in", "on", "at", "to", "for", "with", "by", "and"
+        )
+
+        for (targetTitle in checkTitles) {
+            val cleanTarget = targetTitle.lowercase(Locale.ROOT)
+                .replace(Regex("[^a-zа-я0-9\\s]"), " ")
+                .trim()
+
+            if (cleanTarget.isBlank()) continue
+
+            // 1. Точное вхождение целевого названия
+            if (cleanVideo.contains(cleanTarget)) {
+                return true
+            }
+
+            // 2. Выделение значимых ключевых слов (длиной от 2 символов, исключая предлоги)
+            val keywords = cleanTarget.split(Regex("\\s+"))
+                .map { it.trim() }
+                .filter { it.length >= 2 && it !in stopPrepositions }
+
+            if (keywords.isEmpty()) continue
+
+            if (keywords.size == 1) {
+                // Если название состоит из 1 слова (например "Интерстеллар", "Гладиатор", "Матрица"),
+                // то это слово ОБЯЗАНО присутствовать в названии видео
+                if (cleanVideo.contains(keywords.first())) {
+                    return true
+                }
+            } else {
+                // Если несколько слов: требуем совпадения ключевых слов
+                val matchedCount = keywords.count { cleanVideo.contains(it) }
+                val requiredMatches = if (keywords.size <= 2) keywords.size else (keywords.size * 0.7).toInt().coerceAtLeast(2)
+                if (matchedCount >= requiredMatches) {
+                    return true
+                }
+            }
+        }
+
+        return false
     }
 
     private fun detectQuality(lowerTitle: String): String {
