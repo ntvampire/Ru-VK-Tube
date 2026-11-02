@@ -1,6 +1,290 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/main_frame"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark" />
+    android:background="@color/background_dark">
+
+    <!-- 1. Полноэкранный Backdrop текущего фильма -->
+    <ImageView
+        android:id="@+id/hero_backdrop"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:contentDescription="@string/app_name"
+        android:scaleType="centerCrop"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- 2. Горизонтальный градиент: затемнение слева для четкости текста -->
+    <View
+        android:id="@+id/scrim_horizontal"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/scrim_horizontal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- 3. Вертикальный градиент: затемнение снизу для полки постеров -->
+    <View
+        android:id="@+id/scrim_vertical"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/scrim_vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- 4. Верхняя панель категорий (Табы в стиле NUM) -->
+    <androidx.leanback.widget.HorizontalGridView
+        android:id="@+id/tabs_grid_view"
+        android:layout_width="0dp"
+        android:layout_height="44dp"
+        android:layout_marginStart="48dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="48dp"
+        android:clipToPadding="false"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- 5. Информационный блок текущего фильма (Spotlight) -->
+    <LinearLayout
+        android:id="@+id/info_container"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="48dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="64dp"
+        android:layout_marginBottom="12dp"
+        android:gravity="bottom"
+        android:orientation="vertical"
+        app:layout_constraintBottom_toTopOf="@+id/poster_grid_view"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/tabs_grid_view"
+        app:layout_constraintWidth_max="720dp">
+
+        <!-- Название фильма -->
+        <TextView
+            android:id="@+id/hero_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="2"
+            android:shadowRadius="6"
+            android:textColor="@color/text_primary"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            tools:text="Матрица" />
+
+        <!-- Бейджи: Возраст, Год, Рейтинг, Хронометраж -->
+        <LinearLayout
+            android:id="@+id/hero_badges_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/badge_age"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_badge_rounded"
+                android:paddingStart="6dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="2dp"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                tools:text="16+" />
+
+            <TextView
+                android:id="@+id/badge_rating"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:textColor="#FFC107"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                tools:text="★ 8.2" />
+
+            <TextView
+                android:id="@+id/badge_year"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                tools:text="1999" />
+
+            <TextView
+                android:id="@+id/badge_runtime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                tools:text="136 мин" />
+
+            <TextView
+                android:id="@+id/badge_original_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                tools:text="The Matrix" />
+
+        </LinearLayout>
+
+        <!-- Краткое описание сюжета -->
+        <TextView
+            android:id="@+id/hero_overview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:ellipsize="end"
+            android:lineSpacingExtra="3dp"
+            android:maxLines="3"
+            android:shadowColor="#99000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="4"
+            android:textColor="#D5D5D5"
+            android:textSize="15sp"
+            tools:text="Жизнь Томаса Андерсона разделена на две части: днём он самый обычный офисный служащий, а ночью превращается в хакера по имени Нео..." />
+
+        <!-- Кнопки быстрого действия (доступны по стрелке ВВЕРХ с карточки) -->
+        <LinearLayout
+            android:id="@+id/hero_buttons_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btn_watch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_action_btn"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:paddingStart="18dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="8dp"
+                android:text="▶  Смотреть"
+                android:textColor="@color/color_action_btn_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_trailer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_action_btn"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="8dp"
+                android:text="🎬  Трейлер"
+                android:textColor="@color/color_action_btn_text"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/btn_details"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_action_btn"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="8dp"
+                android:text="ℹ️  Источники"
+                android:textColor="@color/color_action_btn_text"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/btn_favorite"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_action_btn"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="8dp"
+                android:text="❤️  В избранное"
+                android:textColor="@color/color_action_btn_text"
+                android:textSize="14sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- 6. Тот самый "1 ряд" постеров (HorizontalGridView) внизу экрана -->
+    <androidx.leanback.widget.HorizontalGridView
+        android:id="@+id/poster_grid_view"
+        android:layout_width="0dp"
+        android:layout_height="225dp"
+        android:layout_marginBottom="20dp"
+        android:clipToPadding="false"
+        android:paddingStart="40dp"
+        android:paddingEnd="40dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- 7. Индикатор загрузки -->
+    <ProgressBar
+        android:id="@+id/loading_progress"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:indeterminateTint="@color/brand_primary"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/poster_grid_view"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/poster_grid_view" />
+
+    <!-- 8. Сообщение, если список пуст -->
+    <TextView
+        android:id="@+id/empty_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/no_sources_found"
+        android:textColor="@color/text_secondary"
+        android:textSize="16sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@+id/poster_grid_view"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/poster_grid_view" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

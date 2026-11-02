@@ -3,6 +3,7 @@
     <color name="brand_primary_dark">#B81D24</color>
     <color name="background_dark">#121212</color>
     <color name="surface_dark">#1E1E1E</color>
+    <color name="surface_card">#222222</color>
     <color name="overlay_black_translucent">#CC000000</color>
     <color name="text_primary">#FFFFFF</color>
     <color name="text_secondary">#AAAAAA</color>
