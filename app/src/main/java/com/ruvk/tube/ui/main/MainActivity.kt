@@ -19,11 +19,8 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
-import com.ruvk.tube.data.db.FavoriteEntity
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
-import com.ruvk.tube.player.DeviceCapabilityHelper
-import com.ruvk.tube.player.InternalPlayerActivity
 import com.ruvk.tube.ui.details.DetailsActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -54,16 +51,9 @@ class MainActivity : FragmentActivity() {
     private lateinit var badgeOriginalTitle: TextView
     private lateinit var heroOverview: TextView
 
-    // Кнопки быстрого действия
-    private lateinit var btnWatch: TextView
-    private lateinit var btnTrailer: TextView
-    private lateinit var btnDetails: TextView
-    private lateinit var btnFavorite: TextView
-
     private lateinit var posterAdapter: NumPosterAdapter
 
     private var currentMediaItem: MediaItem? = null
-    private var isCurrentFavorite = false
     private var detailsFetchJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,7 +63,6 @@ class MainActivity : FragmentActivity() {
         initViews()
         setupSideMenu()
         setupPosterGrid()
-        setupButtonListeners()
         loadCategory(NumCategory.TRENDING)
     }
 
@@ -95,24 +84,11 @@ class MainActivity : FragmentActivity() {
         badgeOriginalTitle = findViewById(R.id.badge_original_title)
         heroOverview = findViewById(R.id.hero_overview)
 
-        btnWatch = findViewById(R.id.btn_watch)
-        btnTrailer = findViewById(R.id.btn_trailer)
-        btnDetails = findViewById(R.id.btn_details)
-        btnFavorite = findViewById(R.id.btn_favorite)
-
         // Настройка HorizontalGridView
         posterGridView.setNumRows(1)
 
-        // Связка фокуса с пульта
-        posterGridView.nextFocusUpId = R.id.btn_watch
+        // Навигация с пульта (переход влево в боковое меню)
         posterGridView.nextFocusLeftId = R.id.side_menu_recycler
-
-        btnWatch.nextFocusDownId = R.id.poster_grid_view
-        btnTrailer.nextFocusDownId = R.id.poster_grid_view
-        btnDetails.nextFocusDownId = R.id.poster_grid_view
-        btnFavorite.nextFocusDownId = R.id.poster_grid_view
-        btnWatch.nextFocusLeftId = R.id.side_menu_recycler
-
         sideMenuRecycler.nextFocusRightId = R.id.poster_grid_view
     }
 
@@ -180,28 +156,6 @@ class MainActivity : FragmentActivity() {
             }
         )
         posterGridView.adapter = posterAdapter
-    }
-
-    private fun setupButtonListeners() {
-        btnWatch.setOnClickListener {
-            val item = currentMediaItem ?: return@setOnClickListener
-            searchAndPlayMovie(item)
-        }
-
-        btnTrailer.setOnClickListener {
-            val item = currentMediaItem ?: return@setOnClickListener
-            searchAndPlayTrailer(item)
-        }
-
-        btnDetails.setOnClickListener {
-            val item = currentMediaItem ?: return@setOnClickListener
-            openMovieDetails(item)
-        }
-
-        btnFavorite.setOnClickListener {
-            val item = currentMediaItem ?: return@setOnClickListener
-            toggleFavorite(item)
-        }
     }
 
     private fun loadCategory(category: NumCategory) {
@@ -324,9 +278,6 @@ class MainActivity : FragmentActivity() {
         // Описание сюжета
         heroOverview.text = if (item.overview.isNotBlank()) item.overview else "Описание отсутствует"
 
-        // Проверяем статус избранного
-        checkFavoriteStatus(item.id)
-
         // Фоновая дозагрузка возрастного рейтинга и хронометража, если их еще нет в объекте
         if (item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0) {
             fetchExtraDetails(item)
@@ -355,99 +306,6 @@ class MainActivity : FragmentActivity() {
                 }
             } catch (e: Exception) {
                 // Игнорируем ошибки фоновой подгрузки
-            }
-        }
-    }
-
-    private fun checkFavoriteStatus(tmdbId: Long) {
-        lifecycleScope.launch {
-            val isFav = withContext(Dispatchers.IO) {
-                RuVkTubeApp.instance.database.favoritesDao().isFavorite(tmdbId)
-            }
-            isCurrentFavorite = isFav
-            btnFavorite.text = if (isCurrentFavorite) "💔  В избранном" else "❤️  В избранное"
-        }
-    }
-
-    private fun toggleFavorite(item: MediaItem) {
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
-                val dao = RuVkTubeApp.instance.database.favoritesDao()
-                if (isCurrentFavorite) {
-                    dao.delete(item.id)
-                } else {
-                    dao.insert(
-                        FavoriteEntity(
-                            tmdbId = item.id,
-                            title = item.title,
-                            posterUrl = item.posterUrl,
-                            mediaType = item.mediaType.name,
-                            year = item.year,
-                            rating = item.voteAverage
-                        )
-                    )
-                }
-            }
-            isCurrentFavorite = !isCurrentFavorite
-            btnFavorite.text = if (isCurrentFavorite) "💔  В избранном" else "❤️  В избранное"
-            Toast.makeText(
-                this@MainActivity,
-                if (isCurrentFavorite) "Добавлено в избранное" else "Удалено из избранного",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    private fun searchAndPlayMovie(item: MediaItem) {
-        Toast.makeText(this, getString(R.string.searching_sources), Toast.LENGTH_SHORT).show()
-
-        lifecycleScope.launch {
-            val maxRes = DeviceCapabilityHelper.getMaxDisplayHeight(this@MainActivity)
-            val sources = RuVkTubeApp.instance.searchCoordinator.findMovieSources(
-                title = item.title,
-                year = item.year,
-                runtimeMinutes = item.runtimeMinutes,
-                maxSupportedHeight = maxRes
-            )
-
-            if (sources.isNotEmpty()) {
-                val best = sources.first()
-                val intent = Intent(this@MainActivity, InternalPlayerActivity::class.java).apply {
-                    putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, best.streamUrl)
-                    putExtra(InternalPlayerActivity.EXTRA_TITLE, "${item.title} (${best.quality})")
-                    putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
-                    putExtra(InternalPlayerActivity.EXTRA_QUALITY, best.quality)
-                }
-                startActivity(intent)
-            } else {
-                Toast.makeText(this@MainActivity, getString(R.string.no_sources_found), Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun searchAndPlayTrailer(item: MediaItem) {
-        Toast.makeText(this, "Поиск трейлера...", Toast.LENGTH_SHORT).show()
-
-        lifecycleScope.launch {
-            val maxRes = DeviceCapabilityHelper.getMaxDisplayHeight(this@MainActivity)
-            val trailers = RuVkTubeApp.instance.searchCoordinator.findTrailers(
-                title = item.title,
-                year = item.year,
-                maxSupportedHeight = maxRes
-            )
-
-            if (trailers.isNotEmpty()) {
-                val best = trailers.first()
-                val intent = Intent(this@MainActivity, InternalPlayerActivity::class.java).apply {
-                    putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, best.streamUrl)
-                    putExtra(InternalPlayerActivity.EXTRA_TITLE, "${item.title} (Трейлер)")
-                    putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
-                    putExtra(InternalPlayerActivity.EXTRA_QUALITY, best.quality)
-                    putExtra(InternalPlayerActivity.EXTRA_IS_TRAILER, true)
-                }
-                startActivity(intent)
-            } else {
-                Toast.makeText(this@MainActivity, "Русский трейлер не найден", Toast.LENGTH_SHORT).show()
             }
         }
     }

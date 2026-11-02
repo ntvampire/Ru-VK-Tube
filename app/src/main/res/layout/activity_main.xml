@@ -146,7 +146,7 @@
             android:layout_marginTop="12dp"
             android:ellipsize="end"
             android:lineSpacingExtra="3dp"
-            android:maxLines="3"
+            android:maxLines="4"
             android:shadowColor="#99000000"
             android:shadowDx="0"
             android:shadowDy="1"
@@ -154,84 +154,6 @@
             android:textColor="#D5D5D5"
             android:textSize="15sp"
             tools:text="Когда засуха, пыльные бури и вымирание растений приводят человечество к продовольственному кризису, коллектив исследователей и учёных отправляется сквозь червоточину..." />
-
-        <!-- Кнопки быстрого действия (доступны по стрелке ВВЕРХ с карточки) -->
-        <LinearLayout
-            android:id="@+id/hero_buttons_layout"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/btn_watch"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="10dp"
-                android:background="@drawable/bg_action_btn"
-                android:clickable="true"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:paddingStart="18dp"
-                android:paddingTop="8dp"
-                android:paddingEnd="18dp"
-                android:paddingBottom="8dp"
-                android:text="▶  Смотреть"
-                android:textColor="@color/color_action_btn_text"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/btn_trailer"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="10dp"
-                android:background="@drawable/bg_action_btn"
-                android:clickable="true"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:paddingStart="16dp"
-                android:paddingTop="8dp"
-                android:paddingEnd="16dp"
-                android:paddingBottom="8dp"
-                android:text="🎬  Трейлер"
-                android:textColor="@color/color_action_btn_text"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/btn_details"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="10dp"
-                android:background="@drawable/bg_action_btn"
-                android:clickable="true"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:paddingStart="16dp"
-                android:paddingTop="8dp"
-                android:paddingEnd="16dp"
-                android:paddingBottom="8dp"
-                android:text="ℹ️  Источники"
-                android:textColor="@color/color_action_btn_text"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/btn_favorite"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_action_btn"
-                android:clickable="true"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:paddingStart="16dp"
-                android:paddingTop="8dp"
-                android:paddingEnd="16dp"
-                android:paddingBottom="8dp"
-                android:text="❤️  В избранное"
-                android:textColor="@color/color_action_btn_text"
-                android:textSize="14sp" />
-
-        </LinearLayout>
 
     </LinearLayout>
 
