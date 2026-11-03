@@ -2,7 +2,6 @@ package com.ruvk.tube.ui.details
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.TypedValue
 import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -12,14 +11,15 @@ import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import coil.load
-import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
 import com.ruvk.tube.data.db.FavoriteEntity
+import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
 import com.ruvk.tube.domain.models.VideoSource
 import com.ruvk.tube.player.DeviceCapabilityHelper
+import com.ruvk.tube.player.ExternalPlayerLauncher
 import com.ruvk.tube.player.InternalPlayerActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -367,6 +367,15 @@ class DetailsActivity : FragmentActivity() {
 
     private fun startPlayback(source: VideoSource) {
         val item = mediaItem ?: return
+        if (AppPreferences.isExternalPlayer && !source.isTrailer) {
+            ExternalPlayerLauncher.launch(
+                context = this,
+                streamUrl = source.streamUrl,
+                title = "${item.title} (${source.quality})",
+                positionMs = savedPositionMs
+            )
+            return
+        }
         val intent = Intent(this, InternalPlayerActivity::class.java).apply {
             putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, source.streamUrl)
             putExtra(InternalPlayerActivity.EXTRA_TITLE, "${item.title} (${source.quality})")
@@ -386,6 +395,15 @@ class DetailsActivity : FragmentActivity() {
     }
 
     private fun playSavedStream(streamUrl: String, item: MediaItem, startPosMs: Long) {
+        if (AppPreferences.isExternalPlayer) {
+            ExternalPlayerLauncher.launch(
+                context = this,
+                streamUrl = streamUrl,
+                title = item.title,
+                positionMs = startPosMs
+            )
+            return
+        }
         val intent = Intent(this, InternalPlayerActivity::class.java).apply {
             putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, streamUrl)
             putExtra(InternalPlayerActivity.EXTRA_TITLE, item.title)

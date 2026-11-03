@@ -9,7 +9,8 @@ interface TmdbApi {
     @GET("trending/all/day")
     suspend fun getTrending(
         @Query("api_key") apiKey: String,
-        @Query("language") language: String = "ru-RU"
+        @Query("language") language: String = "ru-RU",
+        @Query("page") page: Int = 1
     ): TmdbPageResponse<TmdbMovieDto>
 
     @GET("movie/popular")
@@ -21,6 +22,24 @@ interface TmdbApi {
 
     @GET("tv/popular")
     suspend fun getPopularTv(
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "ru-RU",
+        @Query("page") page: Int = 1
+    ): TmdbPageResponse<TmdbMovieDto>
+
+    @GET("discover/movie")
+    suspend fun getNewDigitalReleases(
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "ru-RU",
+        @Query("with_release_type") releaseType: String = "4|5",
+        @Query("release_date.lte") maxReleaseDate: String,
+        @Query("sort_by") sortBy: String = "primary_release_date.desc",
+        @Query("vote_count.gte") minVoteCount: Int = 5,
+        @Query("page") page: Int = 1
+    ): TmdbPageResponse<TmdbMovieDto>
+
+    @GET("tv/on_the_air")
+    suspend fun getOnTheAirTv(
         @Query("api_key") apiKey: String,
         @Query("language") language: String = "ru-RU",
         @Query("page") page: Int = 1
@@ -46,6 +65,7 @@ interface TmdbApi {
     suspend fun searchMulti(
         @Query("api_key") apiKey: String,
         @Query("query") query: String,
-        @Query("language") language: String = "ru-RU"
+        @Query("language") language: String = "ru-RU",
+        @Query("page") page: Int = 1
     ): TmdbPageResponse<TmdbMovieDto>
 }

@@ -25,6 +25,20 @@ class NumPosterAdapter(
         notifyDataSetChanged()
     }
 
+    fun appendList(newItems: List<MediaItem>) {
+        if (newItems.isEmpty()) return
+        val existingIds = items.map { it.id }.toSet()
+        val uniqueNew = newItems.filter { it.id !in existingIds }
+        if (uniqueNew.isEmpty()) return
+        val startPos = items.size
+        items.addAll(uniqueNew)
+        notifyItemRangeInserted(startPos, uniqueNew.size)
+    }
+
+    fun getItemAt(position: Int): MediaItem? {
+        return items.getOrNull(position)
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PosterViewHolder {
         val view = LayoutInflater.from(parent.context).inflate(R.layout.item_num_poster, parent, false)
         return PosterViewHolder(view)

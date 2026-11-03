@@ -1,6 +1,7 @@
 package com.ruvk.tube.ui.main
 
 import android.animation.ValueAnimator
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -23,9 +24,12 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
+import com.ruvk.tube.data.update.UpdateInfo
+import com.ruvk.tube.data.update.UpdateManager
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
 import com.ruvk.tube.ui.details.DetailsActivity
+import com.ruvk.tube.ui.settings.SettingsActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -46,6 +50,11 @@ class MainActivity : FragmentActivity() {
     private lateinit var searchClearBtn: ImageView
     private var searchJob: Job? = null
     private var currentFeedJob: Job? = null
+
+    // Бесконечная пагинация
+    private var currentPage: Int = 1
+    private var isLoadingNextPage: Boolean = false
+    private var canLoadMore: Boolean = true
 
     // Боковое меню (NUM-style)
     private lateinit var sideMenuContainer: LinearLayout
@@ -77,6 +86,7 @@ class MainActivity : FragmentActivity() {
         setupSideMenu()
         setupPosterGrid()
         loadCategory(NumCategory.TRENDING)
+        checkBackgroundUpdate()
     }
 
     private fun initViews() {
@@ -173,12 +183,17 @@ class MainActivity : FragmentActivity() {
 
         sideMenuAdapter = NumSideMenuAdapter(
             onItemSelected = { category ->
-                loadCategory(category)
-                if (category == NumCategory.SEARCH) {
-                    searchEditText.requestFocus()
+                if (category == NumCategory.SETTINGS) {
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    startActivity(intent)
                 } else {
-                    posterGridView.post {
-                        posterGridView.requestFocus()
+                    loadCategory(category)
+                    if (category == NumCategory.SEARCH) {
+                        searchEditText.requestFocus()
+                    } else {
+                        posterGridView.post {
+                            posterGridView.requestFocus()
+                        }
                     }
                 }
             },
@@ -188,7 +203,7 @@ class MainActivity : FragmentActivity() {
             onRightNavigate = {
                 if (sideMenuAdapter.selectedCategory == NumCategory.SEARCH) {
                     searchEditText.requestFocus()
-                } else {
+                } else if (sideMenuAdapter.selectedCategory != NumCategory.SETTINGS) {
                     posterGridView.requestFocus()
                 }
             }
@@ -258,10 +273,32 @@ class MainActivity : FragmentActivity() {
             }
         )
         posterGridView.adapter = posterAdapter
+
+        // Пагинация: отслеживаем прокрутку ленты
+        posterGridView.setOnChildViewHolderSelectedListener(object : androidx.leanback.widget.OnChildViewHolderSelectedListener() {
+            override fun onChildViewHolderSelected(
+                parent: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder?,
+                position: Int,
+                subposition: Int
+            ) {
+                if (position >= 0 && position < posterAdapter.itemCount) {
+                    posterAdapter.getItemAt(position)?.let { updateHeroSpotlight(it) }
+
+                    // Бесконечная подгрузка: за 5 карточек до конца списка запрашиваем следующую страницу
+                    if (canLoadMore && !isLoadingNextPage && position >= posterAdapter.itemCount - 5) {
+                        loadNextPage()
+                    }
+                }
+            }
+        })
     }
 
     private fun loadCategory(category: NumCategory) {
         currentFeedJob?.cancel()
+        currentPage = 1
+        canLoadMore = true
+        isLoadingNextPage = false
 
         if (category == NumCategory.SEARCH) {
             searchContainer.visibility = View.VISIBLE
@@ -286,11 +323,14 @@ class MainActivity : FragmentActivity() {
         currentFeedJob = lifecycleScope.launch {
             val items = when (category) {
                 NumCategory.SEARCH -> emptyList()
-                NumCategory.TRENDING -> RuVkTubeApp.instance.tmdbRepository.getTrending()
-                NumCategory.MOVIES -> RuVkTubeApp.instance.tmdbRepository.getPopularMovies()
-                NumCategory.SERIES -> RuVkTubeApp.instance.tmdbRepository.getPopularTv()
+                NumCategory.TRENDING -> RuVkTubeApp.instance.tmdbRepository.getTrending(page = 1)
+                NumCategory.NEW_RELEASES -> RuVkTubeApp.instance.tmdbRepository.getNewDigitalReleases(page = 1)
+                NumCategory.ON_THE_AIR -> RuVkTubeApp.instance.tmdbRepository.getOnTheAirTv(page = 1)
+                NumCategory.MOVIES -> RuVkTubeApp.instance.tmdbRepository.getPopularMovies(page = 1)
+                NumCategory.SERIES -> RuVkTubeApp.instance.tmdbRepository.getPopularTv(page = 1)
                 NumCategory.FAVORITES -> loadFavorites()
                 NumCategory.HISTORY -> loadHistory()
+                NumCategory.SETTINGS -> emptyList()
             }
 
             loadingProgress.visibility = View.GONE
@@ -309,15 +349,60 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private fun loadNextPage() {
+        val cat = sideMenuAdapter.selectedCategory
+        if (cat == NumCategory.FAVORITES || cat == NumCategory.HISTORY || cat == NumCategory.SETTINGS) {
+            return
+        }
+
+        isLoadingNextPage = true
+        val nextPage = currentPage + 1
+
+        lifecycleScope.launch {
+            try {
+                val newItems = withContext(Dispatchers.IO) {
+                    when (cat) {
+                        NumCategory.SEARCH -> {
+                            val q = searchEditText.text.toString().trim()
+                            if (q.length >= 2) RuVkTubeApp.instance.tmdbRepository.search(q, page = nextPage)
+                            else emptyList()
+                        }
+                        NumCategory.TRENDING -> RuVkTubeApp.instance.tmdbRepository.getTrending(page = nextPage)
+                        NumCategory.NEW_RELEASES -> RuVkTubeApp.instance.tmdbRepository.getNewDigitalReleases(page = nextPage)
+                        NumCategory.ON_THE_AIR -> RuVkTubeApp.instance.tmdbRepository.getOnTheAirTv(page = nextPage)
+                        NumCategory.MOVIES -> RuVkTubeApp.instance.tmdbRepository.getPopularMovies(page = nextPage)
+                        NumCategory.SERIES -> RuVkTubeApp.instance.tmdbRepository.getPopularTv(page = nextPage)
+                        else -> emptyList()
+                    }
+                }
+
+                if (newItems.isNotEmpty()) {
+                    currentPage = nextPage
+                    posterAdapter.appendList(newItems)
+                } else {
+                    canLoadMore = false
+                }
+            } catch (e: Exception) {
+                canLoadMore = false
+            } finally {
+                isLoadingNextPage = false
+            }
+        }
+    }
+
     private fun performSearch(query: String) {
         currentFeedJob?.cancel()
+        currentPage = 1
+        canLoadMore = true
+        isLoadingNextPage = false
+
         currentFeedJob = lifecycleScope.launch {
             loadingProgress.visibility = View.VISIBLE
             emptyText.visibility = View.GONE
 
             try {
                 val results = withContext(Dispatchers.IO) {
-                    RuVkTubeApp.instance.tmdbRepository.search(query)
+                    RuVkTubeApp.instance.tmdbRepository.search(query, page = 1)
                 }
                 loadingProgress.visibility = View.GONE
                 if (results.isNotEmpty()) {
@@ -534,6 +619,28 @@ class MainActivity : FragmentActivity() {
         if (::sideMenuAdapter.isInitialized && sideMenuAdapter.selectedCategory == NumCategory.HISTORY) {
             loadCategory(NumCategory.HISTORY)
         }
+    }
+
+    private fun checkBackgroundUpdate() {
+        lifecycleScope.launch {
+            val update = UpdateManager.checkUpdate(force = false)
+            if (update != null && !isFinishing) {
+                showUpdateDialog(update)
+            }
+        }
+    }
+
+    private fun showUpdateDialog(update: UpdateInfo) {
+        val changelog = update.changelog ?: "Улучшения стабильности и новые возможности."
+        AlertDialog.Builder(this)
+            .setTitle("Доступна новая версия v${update.versionName}")
+            .setMessage("Что нового:\n$changelog\n\nПерейти в Настройки для обновления?")
+            .setPositiveButton("Обновить") { _, _ ->
+                val intent = Intent(this, SettingsActivity::class.java)
+                startActivity(intent)
+            }
+            .setNegativeButton("Позже", null)
+            .show()
     }
 
     private fun clearHeroSpotlight() {

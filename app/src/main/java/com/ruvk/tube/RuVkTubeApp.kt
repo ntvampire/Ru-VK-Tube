@@ -8,6 +8,7 @@ import com.ruvk.tube.data.api.rutube.RutubeClient
 import com.ruvk.tube.data.api.tmdb.TmdbRepository
 import com.ruvk.tube.data.api.vk.VkClient
 import com.ruvk.tube.data.db.AppDatabase
+import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.data.network.NetworkClient
 import com.ruvk.tube.domain.search.SearchCoordinator
 
@@ -28,6 +29,8 @@ class RuVkTubeApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+
+        AppPreferences.init(this)
 
         database = Room.databaseBuilder(
             applicationContext,

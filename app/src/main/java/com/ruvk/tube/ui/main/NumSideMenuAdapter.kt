@@ -13,10 +13,13 @@ import com.ruvk.tube.R
 enum class NumCategory(val title: String) {
     SEARCH("Поиск"),
     TRENDING("В тренде"),
+    NEW_RELEASES("Новинки"),
+    ON_THE_AIR("В эфире"),
     MOVIES("Фильмы"),
     SERIES("Сериалы"),
     FAVORITES("Избранное"),
-    HISTORY("История")
+    HISTORY("История"),
+    SETTINGS("Настройки")
 }
 
 data class MenuItemData(
@@ -34,10 +37,13 @@ class NumSideMenuAdapter(
     val items = listOf(
         MenuItemData(NumCategory.SEARCH, R.drawable.ic_search, "Поиск"),
         MenuItemData(NumCategory.TRENDING, R.drawable.ic_trending, "В тренде"),
+        MenuItemData(NumCategory.NEW_RELEASES, R.drawable.ic_new_releases, "Новинки"),
+        MenuItemData(NumCategory.ON_THE_AIR, R.drawable.ic_on_the_air, "В эфире"),
         MenuItemData(NumCategory.MOVIES, R.drawable.ic_movies, "Фильмы"),
         MenuItemData(NumCategory.SERIES, R.drawable.ic_series, "Сериалы"),
         MenuItemData(NumCategory.FAVORITES, R.drawable.ic_favorites, "Избранное"),
-        MenuItemData(NumCategory.HISTORY, R.drawable.ic_history, "История")
+        MenuItemData(NumCategory.HISTORY, R.drawable.ic_history, "История"),
+        MenuItemData(NumCategory.SETTINGS, R.drawable.ic_settings, "Настройки")
     )
 
     var selectedCategory: NumCategory = NumCategory.TRENDING

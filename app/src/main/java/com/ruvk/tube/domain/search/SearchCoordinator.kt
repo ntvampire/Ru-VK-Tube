@@ -22,6 +22,9 @@ class SearchCoordinator(
         "лучшие моменты", "нарезка", "фрагмент", "эдиты", "edit", "эдит", "спойлеры"
     )
 
+    // Маркеры экранок, камрипов и записей из кинозалов
+    private val camRegex = Regex("(?i)\\b(TS|TELESYNC|CAMRIP|CAM|HDCAM|TC|TELECINE|LINE)\\b|экранк|экран|чистый звук|звук с ts|звук ts")
+
     private val trailerStopWords = listOf(
         "обзор", "разбор", "реакция", "пародия", "саундтрек", "фильм целиком", "полный фильм",
         "смотреть онлайн", "фильм полностью", "серия"
@@ -80,6 +83,7 @@ class SearchCoordinator(
                 if (rutubeResults.size >= 10) break
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (movieStopWords.any { lowerTitle.contains(it) }) continue
+                if (camRegex.containsMatchIn(lowerTitle)) continue
                 if (!isTitleRelevant(item.title, title, originalTitle)) continue
 
                 if (targetSeconds > 0) {
@@ -116,6 +120,7 @@ class SearchCoordinator(
                 if (vkResults.size >= 10) break
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
                 if (movieStopWords.any { lowerTitle.contains(it) }) continue
+                if (camRegex.containsMatchIn(lowerTitle)) continue
                 if (!isTitleRelevant(item.title, title, originalTitle)) continue
 
                 // Проверка хронометража: отсекаем ролики, не подходящие под фильм

@@ -1,14 +1,19 @@
 package com.ruvk.tube.data.api.tmdb
 
+import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.data.network.NetworkClient
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-class TmdbRepository(
-    private val apiKey: String = DEFAULT_API_KEY
-) {
+class TmdbRepository {
+
+    private val effectiveApiKey: String
+        get() = AppPreferences.tmdbApiKey.ifBlank { DEFAULT_API_KEY }
 
     private val api: TmdbApi by lazy {
         Retrofit.Builder()
@@ -19,23 +24,48 @@ class TmdbRepository(
             .create(TmdbApi::class.java)
     }
 
-    suspend fun getTrending(): List<MediaItem> {
-        val response = api.getTrending(apiKey)
-        return response.results.map { it.toMediaItem() }
+    suspend fun getTrending(page: Int = 1): List<MediaItem> {
+        val response = api.getTrending(effectiveApiKey, page = page)
+        return response.results
+            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
+            .map { it.toMediaItem() }
     }
 
     suspend fun getPopularMovies(page: Int = 1): List<MediaItem> {
-        val response = api.getPopularMovies(apiKey, page = page)
-        return response.results.map { it.toMediaItem(forceType = MediaType.MOVIE) }
+        val response = api.getPopularMovies(effectiveApiKey, page = page)
+        return response.results
+            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
+            .map { it.toMediaItem(forceType = MediaType.MOVIE) }
     }
 
     suspend fun getPopularTv(page: Int = 1): List<MediaItem> {
-        val response = api.getPopularTv(apiKey, page = page)
-        return response.results.map { it.toMediaItem(forceType = MediaType.TV) }
+        val response = api.getPopularTv(effectiveApiKey, page = page)
+        return response.results
+            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
+            .map { it.toMediaItem(forceType = MediaType.TV) }
+    }
+
+    suspend fun getNewDigitalReleases(page: Int = 1): List<MediaItem> {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val response = api.getNewDigitalReleases(
+            apiKey = effectiveApiKey,
+            maxReleaseDate = today,
+            page = page
+        )
+        return response.results
+            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
+            .map { it.toMediaItem(forceType = MediaType.MOVIE) }
+    }
+
+    suspend fun getOnTheAirTv(page: Int = 1): List<MediaItem> {
+        val response = api.getOnTheAirTv(effectiveApiKey, page = page)
+        return response.results
+            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
+            .map { it.toMediaItem(forceType = MediaType.TV) }
     }
 
     suspend fun getMovieDetails(id: Long): MediaItem {
-        val dto = api.getMovieDetails(id, apiKey)
+        val dto = api.getMovieDetails(id, effectiveApiKey)
         val (ageRating, ageDesc) = extractMovieAgeRating(dto.releaseDates)
 
         return MediaItem(
@@ -57,7 +87,7 @@ class TmdbRepository(
     }
 
     suspend fun getTvDetails(id: Long): MediaItem {
-        val dto = api.getTvDetails(id, apiKey)
+        val dto = api.getTvDetails(id, effectiveApiKey)
         val (ageRating, ageDesc) = extractTvAgeRating(dto.contentRatings)
 
         return MediaItem(
@@ -77,8 +107,8 @@ class TmdbRepository(
         )
     }
 
-    suspend fun search(query: String): List<MediaItem> {
-        val response = api.searchMulti(apiKey, query)
+    suspend fun search(query: String, page: Int = 1): List<MediaItem> {
+        val response = api.searchMulti(effectiveApiKey, query, page = page)
         return response.results
             .filter {
                 (it.mediaType == "movie" || it.mediaType == "tv") &&

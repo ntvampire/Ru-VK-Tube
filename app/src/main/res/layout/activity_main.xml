@@ -282,7 +282,7 @@
         android:background="@drawable/bg_side_menu"
         android:elevation="20dp"
         android:orientation="vertical"
-        android:paddingTop="28dp"
+        android:paddingTop="14dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -290,8 +290,8 @@
         <!-- Логотип / Иконка приложения -->
         <ImageView
             android:id="@+id/menu_app_logo"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
             android:layout_gravity="center_horizontal"
             android:contentDescription="@string/app_name"
             android:src="@drawable/ic_movies"
@@ -301,8 +301,8 @@
             android:id="@+id/menu_app_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="24dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="10dp"
             android:alpha="0"
             android:gravity="center"
             android:singleLine="true"
