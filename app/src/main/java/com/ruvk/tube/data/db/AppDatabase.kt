@@ -19,6 +19,9 @@ data class HistoryEntity(
     val mediaType: String,
     val positionMs: Long,
     val durationMs: Long,
+    val year: Int = 0,
+    val rating: Double = 0.0,
+    val overview: String? = null,
     val season: Int = 0,
     val episode: Int = 0,
     val lastStreamUrl: String,
@@ -30,6 +33,8 @@ data class FavoriteEntity(
     @PrimaryKey val tmdbId: Long,
     val title: String,
     val posterUrl: String?,
+    val backdropUrl: String? = null,
+    val overview: String? = null,
     val mediaType: String,
     val year: Int,
     val rating: Double,
@@ -68,7 +73,7 @@ interface FavoritesDao {
 
 @Database(
     entities = [HistoryEntity::class, FavoriteEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

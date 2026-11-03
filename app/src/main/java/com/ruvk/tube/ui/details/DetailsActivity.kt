@@ -217,6 +217,7 @@ class DetailsActivity : FragmentActivity() {
                 } else {
                     RuVkTubeApp.instance.tmdbRepository.getTvDetails(item.id)
                 }
+                mediaItem = detailed
 
                 if (!detailed.ageRating.isNullOrBlank()) {
                     badgeAge.visibility = View.VISIBLE
@@ -312,6 +313,13 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
             putExtra(InternalPlayerActivity.EXTRA_QUALITY, source.quality)
             putExtra(InternalPlayerActivity.EXTRA_IS_TRAILER, source.isTrailer)
+            putExtra(InternalPlayerActivity.EXTRA_POSTER_URL, item.posterUrl)
+            putExtra(InternalPlayerActivity.EXTRA_BACKDROP_URL, item.backdropUrl)
+            putExtra(InternalPlayerActivity.EXTRA_MOVIE_TITLE, item.title)
+            putExtra(InternalPlayerActivity.EXTRA_YEAR, item.year)
+            putExtra(InternalPlayerActivity.EXTRA_RATING, item.voteAverage)
+            putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
+            putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
         }
         startActivity(intent)
     }
@@ -338,6 +346,8 @@ class DetailsActivity : FragmentActivity() {
                             tmdbId = item.id,
                             title = item.title,
                             posterUrl = item.posterUrl,
+                            backdropUrl = item.backdropUrl,
+                            overview = item.overview,
                             mediaType = item.mediaType.name,
                             year = item.year,
                             rating = item.voteAverage

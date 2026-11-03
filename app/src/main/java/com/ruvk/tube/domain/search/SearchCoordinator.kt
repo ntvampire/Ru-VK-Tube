@@ -91,7 +91,7 @@ class SearchCoordinator(
                 }
 
                 val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
-                val quality = detectQuality(lowerTitle)
+                val quality = detectRutubeQuality(streamUrl, lowerTitle)
                 val voiceover = detectVoiceover(lowerTitle)
                 val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight)
 
@@ -134,7 +134,7 @@ class SearchCoordinator(
                     ?: streamInfo.directUrls["480"]
                     ?: continue
 
-                val quality = streamInfo.bestQuality
+                val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
                 val voiceover = detectVoiceover(lowerTitle)
                 val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight)
 
@@ -194,7 +194,7 @@ class SearchCoordinator(
                 if (item.duration !in 20..360) continue
 
                 val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
-                val quality = detectQuality(lowerTitle)
+                val quality = detectRutubeQuality(streamUrl, lowerTitle)
                 val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight)
 
                 rutubeTrailers.add(
@@ -225,7 +225,7 @@ class SearchCoordinator(
                     ?: streamInfo.directUrls["720"]
                     ?: continue
 
-                val quality = streamInfo.bestQuality
+                val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
                 val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight)
 
                 vkTrailers.add(
@@ -305,14 +305,29 @@ class SearchCoordinator(
         return false
     }
 
-    private fun detectQuality(lowerTitle: String): String {
+    private fun detectRutubeQuality(streamUrl: String, lowerTitle: String): String {
+        val lowerUrl = streamUrl.lowercase(Locale.ROOT)
+        return when {
+            lowerUrl.contains("3840x2160") || lowerUrl.contains("2160") || lowerTitle.contains("4k") || lowerTitle.contains("2160") -> "4K"
+            lowerUrl.contains("2560x1440") || lowerUrl.contains("1440") || lowerTitle.contains("2k") || lowerTitle.contains("1440") -> "2K"
+            lowerUrl.contains("1920x1080") || lowerUrl.contains("1080") || lowerTitle.contains("1080") || lowerTitle.contains("fhd") -> "1080p"
+            lowerUrl.contains("1280x720") || lowerUrl.contains("720") || lowerTitle.contains("720") || lowerTitle.contains("hd") -> "720p"
+            lowerUrl.contains("848x480") || lowerUrl.contains("640x480") || lowerUrl.contains("480") || lowerTitle.contains("480") || lowerTitle.contains("sd") -> "480p"
+            else -> "1080p"
+        }
+    }
+
+    private fun detectVkQuality(bestQuality: String, lowerTitle: String): String {
+        if (bestQuality != "Auto (HLS)" && bestQuality.isNotBlank()) {
+            return bestQuality
+        }
         return when {
             lowerTitle.contains("2160") || lowerTitle.contains("4k") -> "4K"
             lowerTitle.contains("1440") || lowerTitle.contains("2k") -> "2K"
             lowerTitle.contains("1080") || lowerTitle.contains("fhd") -> "1080p"
             lowerTitle.contains("720") || lowerTitle.contains("hd") -> "720p"
             lowerTitle.contains("480") || lowerTitle.contains("sd") -> "480p"
-            else -> "720p"
+            else -> "1080p"
         }
     }
 

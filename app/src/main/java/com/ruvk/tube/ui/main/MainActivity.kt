@@ -210,9 +210,9 @@ class MainActivity : FragmentActivity() {
                 id = f.tmdbId,
                 title = f.title,
                 originalTitle = "",
-                overview = "",
+                overview = f.overview ?: "",
                 posterUrl = f.posterUrl,
-                backdropUrl = null,
+                backdropUrl = f.backdropUrl,
                 releaseDate = if (f.year > 0) "${f.year}-01-01" else "",
                 year = f.year,
                 voteAverage = f.rating,
@@ -223,20 +223,68 @@ class MainActivity : FragmentActivity() {
 
     private suspend fun loadHistory(): List<MediaItem> = withContext(Dispatchers.IO) {
         val hist = RuVkTubeApp.instance.database.historyDao().getAllHistory().firstOrNull() ?: emptyList()
-        hist.map { h ->
-            MediaItem(
-                id = h.tmdbId,
-                title = h.title,
-                originalTitle = "",
-                overview = "",
-                posterUrl = h.posterUrl,
-                backdropUrl = h.backdropUrl,
-                releaseDate = "",
-                year = 0,
-                voteAverage = 0.0,
-                mediaType = if (h.mediaType == "TV") MediaType.TV else MediaType.MOVIE
+        val items = mutableListOf<MediaItem>()
+        for (h in hist) {
+            var itemPoster = h.posterUrl
+            var itemBackdrop = h.backdropUrl
+            var itemYear = h.year
+            var itemRating = h.rating
+            var itemOverview = h.overview ?: ""
+            var originalTitle = ""
+            var runtime = 0
+            var ageRating: String? = null
+
+            // Если постер или метаданные отсутствуют (старые записи), догружаем из TMDB
+            if (itemPoster.isNullOrBlank() && h.tmdbId > 0) {
+                try {
+                    val isTv = h.mediaType.equals("tv", ignoreCase = true)
+                    val fullItem = if (isTv) {
+                        RuVkTubeApp.instance.tmdbRepository.getTvDetails(h.tmdbId)
+                    } else {
+                        RuVkTubeApp.instance.tmdbRepository.getMovieDetails(h.tmdbId)
+                    }
+                    itemPoster = fullItem.posterUrl
+                    itemBackdrop = fullItem.backdropUrl
+                    itemYear = fullItem.year
+                    itemRating = fullItem.voteAverage
+                    itemOverview = fullItem.overview
+                    originalTitle = fullItem.originalTitle
+                    runtime = fullItem.runtimeMinutes
+                    ageRating = fullItem.ageRating
+
+                    // Сохраняем обновленные данные в локальную БД
+                    RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
+                        h.copy(
+                            posterUrl = itemPoster,
+                            backdropUrl = itemBackdrop,
+                            year = itemYear,
+                            rating = itemRating,
+                            overview = itemOverview
+                        )
+                    )
+                } catch (e: Exception) {
+                    // Игнорируем сетевые ошибки фонового обогащения
+                }
+            }
+
+            items.add(
+                MediaItem(
+                    id = h.tmdbId,
+                    title = h.title,
+                    originalTitle = originalTitle,
+                    overview = itemOverview,
+                    posterUrl = itemPoster,
+                    backdropUrl = itemBackdrop,
+                    releaseDate = if (itemYear > 0) "$itemYear" else "",
+                    year = itemYear,
+                    voteAverage = itemRating,
+                    runtimeMinutes = runtime,
+                    ageRating = ageRating,
+                    mediaType = if (h.mediaType.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE
+                )
             )
         }
+        items
     }
 
     private fun updateHeroSpotlight(item: MediaItem) {

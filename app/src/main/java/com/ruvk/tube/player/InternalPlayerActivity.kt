@@ -17,6 +17,7 @@ import com.ruvk.tube.RuVkTubeApp
 import com.ruvk.tube.data.db.HistoryEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class InternalPlayerActivity : AppCompatActivity() {
 
@@ -30,6 +31,13 @@ class InternalPlayerActivity : AppCompatActivity() {
     private var quality: String = ""
     private var startPositionMs: Long = 0
     private var isTrailer: Boolean = false
+    private var posterUrl: String? = null
+    private var backdropUrl: String? = null
+    private var movieTitle: String = ""
+    private var year: Int = 0
+    private var rating: Double = 0.0
+    private var overview: String? = null
+    private var mediaType: String = "MOVIE"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +49,13 @@ class InternalPlayerActivity : AppCompatActivity() {
         quality = intent.getStringExtra(EXTRA_QUALITY) ?: "Auto"
         startPositionMs = intent.getLongExtra(EXTRA_START_POSITION_MS, 0)
         isTrailer = intent.getBooleanExtra(EXTRA_IS_TRAILER, false)
+        posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
+        backdropUrl = intent.getStringExtra(EXTRA_BACKDROP_URL)
+        movieTitle = intent.getStringExtra(EXTRA_MOVIE_TITLE) ?: title
+        year = intent.getIntExtra(EXTRA_YEAR, 0)
+        rating = intent.getDoubleExtra(EXTRA_RATING, 0.0)
+        overview = intent.getStringExtra(EXTRA_OVERVIEW)
+        mediaType = intent.getStringExtra(EXTRA_MEDIA_TYPE) ?: "MOVIE"
 
         playerView = findViewById(R.id.player_view)
         bufferingBar = findViewById(R.id.player_buffering)
@@ -74,6 +89,15 @@ class InternalPlayerActivity : AppCompatActivity() {
             prepare()
             if (startPositionMs > 0 && !isTrailer) {
                 seekTo(startPositionMs)
+            } else if (!isTrailer && tmdbId > 0) {
+                lifecycleScope.launch {
+                    val savedPos = withContext(Dispatchers.IO) {
+                        RuVkTubeApp.instance.database.historyDao().getByTmdbId(tmdbId)?.positionMs ?: 0L
+                    }
+                    if (savedPos > 5_000L) {
+                        exoPlayer?.seekTo(savedPos)
+                    }
+                }
             }
             playWhenReady = true
 
@@ -87,6 +111,12 @@ class InternalPlayerActivity : AppCompatActivity() {
                             if (isTrailer) finish()
                         }
                         Player.STATE_IDLE -> bufferingBar.visibility = View.GONE
+                    }
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (!isPlaying) {
+                        savePlaybackPosition()
                     }
                 }
 
@@ -145,18 +175,24 @@ class InternalPlayerActivity : AppCompatActivity() {
 
         val position = player.currentPosition
         val duration = player.duration
+        val validPos = if (position > 0) position else 0L
+        val validDur = if (duration > 0) duration else 0L
 
-        if (position > 15_000 && duration > 60_000) {
+        // Сохраняем в историю если воспроизведение длилось от 3 секунд
+        if (validPos > 3_000L || validDur > 60_000L) {
             lifecycleScope.launch(Dispatchers.IO) {
                 RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
                     HistoryEntity(
                         tmdbId = tmdbId,
-                        title = title,
-                        posterUrl = null,
-                        backdropUrl = null,
-                        mediaType = "movie",
-                        positionMs = position,
-                        durationMs = duration,
+                        title = if (movieTitle.isNotBlank()) movieTitle else title,
+                        posterUrl = posterUrl,
+                        backdropUrl = backdropUrl,
+                        mediaType = mediaType,
+                        positionMs = validPos,
+                        durationMs = validDur,
+                        year = year,
+                        rating = rating,
+                        overview = overview,
                         lastStreamUrl = streamUrl
                     )
                 )
@@ -171,5 +207,12 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_QUALITY = "extra_quality"
         const val EXTRA_START_POSITION_MS = "extra_start_pos"
         const val EXTRA_IS_TRAILER = "extra_is_trailer"
+        const val EXTRA_POSTER_URL = "extra_poster_url"
+        const val EXTRA_BACKDROP_URL = "extra_backdrop_url"
+        const val EXTRA_MOVIE_TITLE = "extra_movie_title"
+        const val EXTRA_YEAR = "extra_year"
+        const val EXTRA_RATING = "extra_rating"
+        const val EXTRA_OVERVIEW = "extra_overview"
+        const val EXTRA_MEDIA_TYPE = "extra_media_type"
     }
 }
