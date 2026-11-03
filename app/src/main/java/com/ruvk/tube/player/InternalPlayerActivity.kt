@@ -5,6 +5,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
@@ -16,6 +17,9 @@ import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
 import com.ruvk.tube.data.db.HistoryEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -85,17 +89,30 @@ class InternalPlayerActivity : AppCompatActivity() {
             .setMediaSourceFactory(mediaSourceFactory)
             .build().apply {
             val mediaItem = MediaItem.fromUri(streamUrl)
-            setMediaItem(mediaItem)
+            if (startPositionMs > 5_000L && !isTrailer) {
+                setMediaItem(mediaItem, startPositionMs)
+                Toast.makeText(
+                    this@InternalPlayerActivity,
+                    "Продолжение просмотра с ${formatTime(startPositionMs)}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                setMediaItem(mediaItem)
+            }
             prepare()
-            if (startPositionMs > 0 && !isTrailer) {
-                seekTo(startPositionMs)
-            } else if (!isTrailer && tmdbId > 0) {
+
+            if (startPositionMs == 0L && !isTrailer && tmdbId > 0) {
                 lifecycleScope.launch {
                     val savedPos = withContext(Dispatchers.IO) {
                         RuVkTubeApp.instance.database.historyDao().getByTmdbId(tmdbId)?.positionMs ?: 0L
                     }
                     if (savedPos > 5_000L) {
                         exoPlayer?.seekTo(savedPos)
+                        Toast.makeText(
+                            this@InternalPlayerActivity,
+                            "Продолжение просмотра с ${formatTime(savedPos)}",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
             }
@@ -108,6 +125,7 @@ class InternalPlayerActivity : AppCompatActivity() {
                         Player.STATE_READY -> bufferingBar.visibility = View.GONE
                         Player.STATE_ENDED -> {
                             bufferingBar.visibility = View.GONE
+                            stopProgressTracking()
                             if (isTrailer) finish()
                         }
                         Player.STATE_IDLE -> bufferingBar.visibility = View.GONE
@@ -115,18 +133,53 @@ class InternalPlayerActivity : AppCompatActivity() {
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    if (!isPlaying) {
+                    if (isPlaying) {
+                        startProgressTracking()
+                    } else {
+                        stopProgressTracking()
                         savePlaybackPosition()
                     }
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
                     bufferingBar.visibility = View.GONE
+                    stopProgressTracking()
                 }
             })
         }
 
         playerView.player = exoPlayer
+    }
+
+    private var progressTrackingJob: Job? = null
+
+    private fun startProgressTracking() {
+        progressTrackingJob?.cancel()
+        progressTrackingJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(5000)
+                if (exoPlayer?.isPlaying == true) {
+                    savePlaybackPosition()
+                }
+            }
+        }
+    }
+
+    private fun stopProgressTracking() {
+        progressTrackingJob?.cancel()
+        progressTrackingJob = null
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) {
+            String.format("%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format("%02d:%02d", minutes, seconds)
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -158,12 +211,14 @@ class InternalPlayerActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        stopProgressTracking()
         savePlaybackPosition()
         exoPlayer?.pause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        stopProgressTracking()
         savePlaybackPosition()
         exoPlayer?.release()
         exoPlayer = null

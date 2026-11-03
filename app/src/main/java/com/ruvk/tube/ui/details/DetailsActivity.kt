@@ -2,6 +2,7 @@ package com.ruvk.tube.ui.details
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -11,6 +12,7 @@ import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import coil.load
+import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
 import com.ruvk.tube.data.db.FavoriteEntity
@@ -50,6 +52,7 @@ class DetailsActivity : FragmentActivity() {
 
     private var mediaItem: MediaItem? = null
     private var isFavorite = false
+    private var savedPositionMs: Long = 0L
     private var isSearchingSources = false
     private var sourcesList = listOf<VideoSource>()
     private var searchSourcesJob: Job? = null
@@ -70,6 +73,12 @@ class DetailsActivity : FragmentActivity() {
         setupListeners()
         bindMediaItem(item)
         checkFavoriteStatus(item.id)
+        checkHistoryPosition(item.id)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        mediaItem?.let { checkHistoryPosition(it.id) }
     }
 
     private fun initViews() {
@@ -158,8 +167,12 @@ class DetailsActivity : FragmentActivity() {
             error(R.color.background_dark)
         }
 
+        val cornerRadiusPx = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 10f, resources.displayMetrics
+        )
         posterImage.load(item.posterUrl) {
             crossfade(300)
+            transformations(RoundedCornersTransformation(cornerRadiusPx))
             placeholder(R.color.surface_card)
             error(R.color.surface_card)
         }
@@ -312,6 +325,7 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_TITLE, "${item.title} (${source.quality})")
             putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
             putExtra(InternalPlayerActivity.EXTRA_QUALITY, source.quality)
+            putExtra(InternalPlayerActivity.EXTRA_START_POSITION_MS, savedPositionMs)
             putExtra(InternalPlayerActivity.EXTRA_IS_TRAILER, source.isTrailer)
             putExtra(InternalPlayerActivity.EXTRA_POSTER_URL, item.posterUrl)
             putExtra(InternalPlayerActivity.EXTRA_BACKDROP_URL, item.backdropUrl)
@@ -322,6 +336,33 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
         }
         startActivity(intent)
+    }
+
+    private fun checkHistoryPosition(tmdbId: Long) {
+        lifecycleScope.launch {
+            val history = withContext(Dispatchers.IO) {
+                RuVkTubeApp.instance.database.historyDao().getByTmdbId(tmdbId)
+            }
+            if (history != null && history.positionMs > 5_000L) {
+                savedPositionMs = history.positionMs
+                btnWatch.text = "Продолжить (${formatTime(savedPositionMs)})"
+            } else {
+                savedPositionMs = 0L
+                btnWatch.text = "Смотреть"
+            }
+        }
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) {
+            String.format("%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format("%02d:%02d", minutes, seconds)
+        }
     }
 
     private fun checkFavoriteStatus(tmdbId: Long) {

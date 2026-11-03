@@ -41,6 +41,67 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- 3.1. Поле поиска по каталогу (отображается в режиме ПОИСК) -->
+    <LinearLayout
+        android:id="@+id/search_container"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="92dp"
+        android:layout_marginTop="32dp"
+        android:layout_marginEnd="64dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintWidth_max="600dp">
+
+        <LinearLayout
+            android:id="@+id/search_input_frame"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_search_input"
+            android:focusable="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_search"
+                app:tint="@color/text_secondary" />
+
+            <EditText
+                android:id="@+id/search_edit_text"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:background="@null"
+                android:hint="Поиск фильмов и сериалов..."
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary"
+                android:textSize="17sp" />
+
+            <ImageView
+                android:id="@+id/search_clear_btn"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true"
+                android:src="@drawable/ic_close"
+                android:visibility="gone"
+                app:tint="@color/text_secondary" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- 4. Информационный блок текущего фильма (Spotlight) -->
     <LinearLayout
         android:id="@+id/info_container"
@@ -74,7 +135,7 @@
             android:textStyle="bold"
             tools:text="Интерстеллар" />
 
-        <!-- Бейджи: Возраст, Год, Рейтинг, Хронометраж -->
+        <!-- Бейджи: Прогресс, Возраст, Год, Рейтинг, Хронометраж -->
         <LinearLayout
             android:id="@+id/hero_badges_layout"
             android:layout_width="wrap_content"
@@ -82,6 +143,22 @@
             android:layout_marginTop="10dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/badge_watch_progress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_badge_rounded"
+                android:paddingStart="8dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="2dp"
+                android:textColor="#00E676"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:text="▶ Просмотрено 45:10" />
 
             <TextView
                 android:id="@+id/badge_age"

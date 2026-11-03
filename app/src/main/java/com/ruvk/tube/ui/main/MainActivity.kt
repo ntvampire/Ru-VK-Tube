@@ -3,10 +3,14 @@ package com.ruvk.tube.ui.main
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewParent
 import android.view.animation.DecelerateInterpolator
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -24,6 +28,7 @@ import com.ruvk.tube.domain.models.MediaType
 import com.ruvk.tube.ui.details.DetailsActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,6 +40,13 @@ class MainActivity : FragmentActivity() {
     private lateinit var loadingProgress: ProgressBar
     private lateinit var emptyText: TextView
 
+    // Поиск по каталогу
+    private lateinit var searchContainer: LinearLayout
+    private lateinit var searchEditText: EditText
+    private lateinit var searchClearBtn: ImageView
+    private var searchJob: Job? = null
+    private var currentFeedJob: Job? = null
+
     // Боковое меню (NUM-style)
     private lateinit var sideMenuContainer: LinearLayout
     private lateinit var menuAppTitle: TextView
@@ -44,6 +56,7 @@ class MainActivity : FragmentActivity() {
 
     // Элементы информационного блока (Spotlight)
     private lateinit var heroTitle: TextView
+    private lateinit var badgeWatchProgress: TextView
     private lateinit var badgeAge: TextView
     private lateinit var badgeRating: TextView
     private lateinit var badgeYear: TextView
@@ -72,11 +85,16 @@ class MainActivity : FragmentActivity() {
         loadingProgress = findViewById(R.id.loading_progress)
         emptyText = findViewById(R.id.empty_text)
 
+        searchContainer = findViewById(R.id.search_container)
+        searchEditText = findViewById(R.id.search_edit_text)
+        searchClearBtn = findViewById(R.id.search_clear_btn)
+
         sideMenuContainer = findViewById(R.id.side_menu_container)
         menuAppTitle = findViewById(R.id.menu_app_title)
         sideMenuRecycler = findViewById(R.id.side_menu_recycler)
 
         heroTitle = findViewById(R.id.hero_title)
+        badgeWatchProgress = findViewById(R.id.badge_watch_progress)
         badgeAge = findViewById(R.id.badge_age)
         badgeRating = findViewById(R.id.badge_rating)
         badgeYear = findViewById(R.id.badge_year)
@@ -84,13 +102,60 @@ class MainActivity : FragmentActivity() {
         badgeOriginalTitle = findViewById(R.id.badge_original_title)
         heroOverview = findViewById(R.id.hero_overview)
 
+        // Настройка навигации строки поиска
+        searchEditText.nextFocusLeftId = R.id.side_menu_recycler
+        searchEditText.nextFocusDownId = R.id.poster_grid_view
+
+        searchClearBtn.setOnClickListener {
+            searchEditText.setText("")
+            searchEditText.requestFocus()
+        }
+
+        searchEditText.setOnEditorActionListener { _, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH ||
+                (event != null && event.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+            ) {
+                val query = searchEditText.text.toString().trim()
+                if (query.isNotBlank()) {
+                    searchJob?.cancel()
+                    performSearch(query)
+                }
+                true
+            } else {
+                false
+            }
+        }
+
+        searchEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val query = s?.toString()?.trim() ?: ""
+                searchClearBtn.visibility = if (query.isNotEmpty()) View.VISIBLE else View.GONE
+                if (sideMenuAdapter.selectedCategory == NumCategory.SEARCH) {
+                    searchJob?.cancel()
+                    if (query.length >= 2) {
+                        searchJob = lifecycleScope.launch {
+                            delay(500)
+                            performSearch(query)
+                        }
+                    } else if (query.isEmpty()) {
+                        posterAdapter.submitList(emptyList())
+                        clearHeroSpotlight()
+                        emptyText.text = "Введите название фильма или сериала для поиска"
+                        emptyText.visibility = View.VISIBLE
+                    }
+                }
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
         // Настройка HorizontalGridView
         posterGridView.setNumRows(1)
 
-        // Перехват DPAD_LEFT на первом постере для перехода в боковое меню
+        // Перехват кнопок пульта в HorizontalGridView
         posterGridView.setOnKeyInterceptListener { event ->
-            if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                if (posterGridView.selectedPosition <= 0) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && posterGridView.selectedPosition <= 0) {
                     val targetPos = sideMenuAdapter.selectedCategory.ordinal
                     val targetHolder = sideMenuRecycler.findViewHolderForAdapterPosition(targetPos)
                     val targetView = targetHolder?.itemView
@@ -98,6 +163,10 @@ class MainActivity : FragmentActivity() {
                         ?: sideMenuRecycler.layoutManager?.findViewByPosition(0)
 
                     if (targetView != null && targetView.requestFocus()) {
+                        return@setOnKeyInterceptListener true
+                    }
+                } else if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && sideMenuAdapter.selectedCategory == NumCategory.SEARCH) {
+                    if (searchEditText.requestFocus()) {
                         return@setOnKeyInterceptListener true
                     }
                 }
@@ -112,15 +181,23 @@ class MainActivity : FragmentActivity() {
         sideMenuAdapter = NumSideMenuAdapter(
             onItemSelected = { category ->
                 loadCategory(category)
-                posterGridView.post {
-                    posterGridView.requestFocus()
+                if (category == NumCategory.SEARCH) {
+                    searchEditText.requestFocus()
+                } else {
+                    posterGridView.post {
+                        posterGridView.requestFocus()
+                    }
                 }
             },
             onMenuFocusChanged = { _ ->
                 // Фокус отслеживается через глобальный слушатель
             },
             onRightNavigate = {
-                posterGridView.requestFocus()
+                if (sideMenuAdapter.selectedCategory == NumCategory.SEARCH) {
+                    searchEditText.requestFocus()
+                } else {
+                    posterGridView.requestFocus()
+                }
             }
         )
         sideMenuRecycler.adapter = sideMenuAdapter
@@ -176,11 +253,31 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun loadCategory(category: NumCategory) {
+        currentFeedJob?.cancel()
+
+        if (category == NumCategory.SEARCH) {
+            searchContainer.visibility = View.VISIBLE
+            loadingProgress.visibility = View.GONE
+            val currentQuery = searchEditText.text.toString().trim()
+            if (currentQuery.length >= 2) {
+                performSearch(currentQuery)
+            } else {
+                emptyText.text = "Введите название фильма или сериала для поиска"
+                emptyText.visibility = View.VISIBLE
+                posterAdapter.submitList(emptyList())
+                clearHeroSpotlight()
+            }
+            searchEditText.post { searchEditText.requestFocus() }
+            return
+        }
+
+        searchContainer.visibility = View.GONE
         loadingProgress.visibility = View.VISIBLE
         emptyText.visibility = View.GONE
 
-        lifecycleScope.launch {
+        currentFeedJob = lifecycleScope.launch {
             val items = when (category) {
+                NumCategory.SEARCH -> emptyList()
                 NumCategory.TRENDING -> RuVkTubeApp.instance.tmdbRepository.getTrending()
                 NumCategory.MOVIES -> RuVkTubeApp.instance.tmdbRepository.getPopularMovies()
                 NumCategory.SERIES -> RuVkTubeApp.instance.tmdbRepository.getPopularTv()
@@ -196,9 +293,40 @@ class MainActivity : FragmentActivity() {
                 posterGridView.post { posterGridView.requestFocus() }
                 updateHeroSpotlight(items.first())
             } else {
+                emptyText.text = getString(R.string.no_sources_found)
                 emptyText.visibility = View.VISIBLE
                 posterAdapter.submitList(emptyList())
                 clearHeroSpotlight()
+            }
+        }
+    }
+
+    private fun performSearch(query: String) {
+        currentFeedJob?.cancel()
+        currentFeedJob = lifecycleScope.launch {
+            loadingProgress.visibility = View.VISIBLE
+            emptyText.visibility = View.GONE
+
+            try {
+                val results = withContext(Dispatchers.IO) {
+                    RuVkTubeApp.instance.tmdbRepository.search(query)
+                }
+                loadingProgress.visibility = View.GONE
+                if (results.isNotEmpty()) {
+                    emptyText.visibility = View.GONE
+                    posterAdapter.submitList(results)
+                    posterGridView.scrollToPosition(0)
+                    updateHeroSpotlight(results.first())
+                } else {
+                    posterAdapter.submitList(emptyList())
+                    clearHeroSpotlight()
+                    emptyText.text = "Ничего не найдено по запросу \"$query\""
+                    emptyText.visibility = View.VISIBLE
+                }
+            } catch (e: Exception) {
+                loadingProgress.visibility = View.GONE
+                emptyText.text = "Ошибка поиска: проверьте подключение к сети"
+                emptyText.visibility = View.VISIBLE
             }
         }
     }
@@ -280,7 +408,9 @@ class MainActivity : FragmentActivity() {
                     voteAverage = itemRating,
                     runtimeMinutes = runtime,
                     ageRating = ageRating,
-                    mediaType = if (h.mediaType.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE
+                    mediaType = if (h.mediaType.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE,
+                    watchPositionMs = h.positionMs,
+                    watchDurationMs = h.durationMs
                 )
             )
         }
@@ -299,6 +429,14 @@ class MainActivity : FragmentActivity() {
         }
 
         heroTitle.text = item.title
+
+        // Бейдж прогресса просмотра
+        if (item.watchPositionMs > 5_000L) {
+            badgeWatchProgress.visibility = View.VISIBLE
+            badgeWatchProgress.text = "▶ ${formatTime(item.watchPositionMs)}"
+        } else {
+            badgeWatchProgress.visibility = View.GONE
+        }
 
         // Бейдж возраста (18+, 16+, 12+, 6+, 0+)
         if (!item.ageRating.isNullOrBlank()) {
@@ -382,15 +520,35 @@ class MainActivity : FragmentActivity() {
         startActivity(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::sideMenuAdapter.isInitialized && sideMenuAdapter.selectedCategory == NumCategory.HISTORY) {
+            loadCategory(NumCategory.HISTORY)
+        }
+    }
+
     private fun clearHeroSpotlight() {
         heroBackdrop.setImageDrawable(null)
         heroTitle.text = ""
+        badgeWatchProgress.visibility = View.GONE
         badgeAge.visibility = View.GONE
         badgeRating.visibility = View.GONE
         badgeYear.visibility = View.GONE
         badgeRuntime.visibility = View.GONE
         badgeOriginalTitle.visibility = View.GONE
         heroOverview.text = ""
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) {
+            String.format("%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format("%02d:%02d", minutes, seconds)
+        }
     }
 
     override fun onBackPressed() {

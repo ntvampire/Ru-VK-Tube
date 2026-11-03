@@ -11,6 +11,7 @@
     android:focusable="true"
     android:focusableInTouchMode="true"
     android:background="@drawable/bg_poster_selector"
+    android:outlineProvider="background"
     android:clipToOutline="true">
 
     <ImageView
@@ -27,7 +28,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="top|end"
         android:layout_margin="8dp"
-        android:background="#CC000000"
+        android:background="@drawable/bg_badge_rounded"
         android:paddingStart="6dp"
         android:paddingTop="2dp"
         android:paddingEnd="6dp"
@@ -35,6 +36,17 @@
         android:textColor="#FFC107"
         android:textSize="11sp"
         android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!-- Полоса прогресса просмотра -->
+    <ProgressBar
+        android:id="@+id/poster_watch_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="5dp"
+        android:layout_gravity="bottom"
+        android:max="1000"
+        android:progressDrawable="@drawable/bg_watch_progress"
         android:visibility="gone" />
 
 </FrameLayout>

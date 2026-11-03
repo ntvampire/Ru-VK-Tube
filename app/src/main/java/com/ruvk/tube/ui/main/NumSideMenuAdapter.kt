@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.ruvk.tube.R
 
 enum class NumCategory(val title: String) {
+    SEARCH("Поиск"),
     TRENDING("В тренде"),
     MOVIES("Фильмы"),
     SERIES("Сериалы"),
@@ -31,6 +32,7 @@ class NumSideMenuAdapter(
 ) : RecyclerView.Adapter<NumSideMenuAdapter.MenuViewHolder>() {
 
     val items = listOf(
+        MenuItemData(NumCategory.SEARCH, R.drawable.ic_search, "Поиск"),
         MenuItemData(NumCategory.TRENDING, R.drawable.ic_trending, "В тренде"),
         MenuItemData(NumCategory.MOVIES, R.drawable.ic_movies, "Фильмы"),
         MenuItemData(NumCategory.SERIES, R.drawable.ic_series, "Сериалы"),
@@ -81,7 +83,11 @@ class NumSideMenuAdapter(
             container.isSelected = isSelected
             titleView.alpha = if (expanded) 1.0f else 0.0f
 
-            container.nextFocusRightId = R.id.poster_grid_view
+            container.nextFocusRightId = if (item.category == NumCategory.SEARCH) {
+                R.id.search_edit_text
+            } else {
+                R.id.poster_grid_view
+            }
 
             container.setOnFocusChangeListener { _, hasFocus ->
                 onMenuFocusChanged(hasFocus)

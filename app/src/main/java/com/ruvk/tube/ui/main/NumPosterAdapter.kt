@@ -1,13 +1,16 @@
 package com.ruvk.tube.ui.main
 
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.domain.models.MediaItem
 
@@ -39,10 +42,15 @@ class NumPosterAdapter(
         private val cardContainer: FrameLayout = itemView.findViewById(R.id.card_container)
         private val posterImage: ImageView = itemView.findViewById(R.id.poster_image)
         private val ratingBadge: TextView = itemView.findViewById(R.id.poster_rating_badge)
+        private val watchProgressBar: ProgressBar = itemView.findViewById(R.id.poster_watch_progress)
+        private val cornerRadiusPx = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 10f, itemView.context.resources.displayMetrics
+        )
 
         fun bind(item: MediaItem) {
             posterImage.load(item.posterUrl) {
                 crossfade(true)
+                transformations(RoundedCornersTransformation(cornerRadiusPx))
                 placeholder(R.color.surface_card)
                 error(R.color.surface_card)
             }
@@ -52,6 +60,16 @@ class NumPosterAdapter(
                 ratingBadge.text = String.format("%.1f", item.voteAverage)
             } else {
                 ratingBadge.visibility = View.GONE
+            }
+
+            // Полоса прогресса просмотра фильма
+            if (item.watchPositionMs > 5_000L && item.watchDurationMs > 30_000L) {
+                val progress = ((item.watchPositionMs.toDouble() / item.watchDurationMs) * 1000)
+                    .toInt().coerceIn(10, 1000)
+                watchProgressBar.progress = progress
+                watchProgressBar.visibility = View.VISIBLE
+            } else {
+                watchProgressBar.visibility = View.GONE
             }
 
             cardContainer.setOnFocusChangeListener { _, hasFocus ->

@@ -4,6 +4,8 @@
     android:layout_height="100dp"
     android:layout_marginEnd="12dp"
     android:background="@drawable/source_card_bg"
+    android:outlineProvider="background"
+    android:clipToOutline="true"
     android:clickable="true"
     android:focusable="true"
     android:focusableInTouchMode="true"

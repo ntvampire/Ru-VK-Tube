@@ -24,7 +24,9 @@ data class MediaItem(
     val mediaType: MediaType = MediaType.MOVIE,
     val imdbId: String? = null,
     val ageRating: String? = null,
-    val ageRatingDescription: String? = null
+    val ageRatingDescription: String? = null,
+    val watchPositionMs: Long = 0L,
+    val watchDurationMs: Long = 0L
 ) : Serializable
 
 data class VideoSource(
