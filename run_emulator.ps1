@@ -1,28 +1,51 @@
-﻿# Запуск эмулятора Android TV (ATV_9) и автоматическая установка приложения
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $env:ANDROID_HOME = "D:\Projects\AndroidSDK"
 $env:JAVA_HOME = "D:\Projects\AndroidSDK\jdk-17"
 $ADB = "D:\Projects\AndroidSDK\platform-tools\adb.exe"
 $EMU = "D:\Projects\AndroidSDK\emulator\emulator.exe"
-$APK = "$PSScriptRoot\app\build\outputs\apk\debug\app-debug.apk"
 
-Write-Host "Запуск эмулятора Android TV 9 (ATV_9)..." -ForegroundColor Cyan
-Start-Process $EMU -ArgumentList "-avd", "ATV_9", "-netdelay", "none", "-netspeed", "full"
-
-Write-Host "Ожидание готовности ADB..." -ForegroundColor Yellow
-& $ADB wait-for-device
-
-Write-Host "Ожидание полной загрузки системы Android TV..." -ForegroundColor Yellow
-while ($true) {
-    $boot = (& $ADB shell getprop sys.boot_completed 2>$null)
-    if ($boot -and $boot.Trim() -eq "1") { break }
-    Start-Sleep -Seconds 2
+# Поиск свежего релизного APK, иначе debug
+$releaseApk = Get-ChildItem "$PSScriptRoot\app\build\outputs\apk\release\Ru-VK-Tube-*.apk" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($releaseApk) {
+    $APK = $releaseApk.FullName
+    $PKG = "com.ruvk.tube"
+    Write-Host "Выбран релизный APK: $($releaseApk.Name)" -ForegroundColor Cyan
+} else {
+    $APK = "$PSScriptRoot\app\build\outputs\apk\debug\app-debug.apk"
+    $PKG = "com.ruvk.tube.debug"
+    Write-Host "Релизный APK не найден, выбран debug: $APK" -ForegroundColor Yellow
 }
 
-Write-Host "Эмулятор загружен! Установка Ru-VK-Tube..." -ForegroundColor Green
+if (-not (Test-Path $APK)) {
+    Write-Host "Ошибка: файл $APK не найден! Сначала соберите проект." -ForegroundColor Red
+    exit 1
+}
+
+# Проверяем, запущен ли уже эмулятор
+$devices = & $ADB devices | Where-Object { $_ -match "\bdevice\b" -and $_ -notmatch "List of" }
+
+if (-not $devices) {
+    Write-Host "Запуск эмулятора Android TV (ATV_9)..." -ForegroundColor Cyan
+    Start-Process $EMU -ArgumentList "-avd", "ATV_9", "-netdelay", "none", "-netspeed", "full"
+
+    Write-Host "Ожидание готовности ADB..." -ForegroundColor Yellow
+    & $ADB wait-for-device
+
+    Write-Host "Ожидание полной загрузки системы Android TV..." -ForegroundColor Yellow
+    while ($true) {
+        $boot = (& $ADB shell getprop sys.boot_completed 2>$null)
+        if ($boot -and $boot.Trim() -eq "1") { break }
+        Start-Sleep -Seconds 2
+    }
+    Write-Host "Эмулятор успешно загружен!" -ForegroundColor Green
+} else {
+    Write-Host "Обнаружено уже запущенное устройство/эмулятор." -ForegroundColor Green
+}
+
+Write-Host "Установка $([System.IO.Path]::GetFileName($APK))..." -ForegroundColor Green
 & $ADB install -r $APK
 
-Write-Host "Запуск Ru-VK-Tube на экране ТВ..." -ForegroundColor Green
-& $ADB shell am start -n com.ruvk.tube.debug/com.ruvk.tube.ui.main.MainActivity
+Write-Host "Запуск Ru-VK-Tube ($PKG)..." -ForegroundColor Green
+& $ADB shell am start -n "$PKG/com.ruvk.tube.ui.main.MainActivity"
