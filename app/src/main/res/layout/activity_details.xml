@@ -30,7 +30,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- 3. Вертикальный градиент: затемнение снизу для полки источников -->
+    <!-- 3. Вертикальный градиент: затемнение снизу для полок -->
     <View
         android:id="@+id/details_scrim_vertical"
         android:layout_width="0dp"
@@ -41,306 +41,360 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- 4. Вертикальный постер фильма (слева) -->
-    <FrameLayout
-        android:id="@+id/poster_card"
-        android:layout_width="190dp"
-        android:layout_height="280dp"
-        android:layout_marginStart="56dp"
-        android:layout_marginTop="36dp"
-        android:background="@drawable/bg_poster_card"
-        android:foreground="@drawable/bg_poster_card_border"
-        android:outlineProvider="background"
-        android:clipToOutline="true"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <ImageView
-            android:id="@+id/details_poster"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:contentDescription="@string/app_name"
-            android:scaleType="centerCrop" />
-    </FrameLayout>
-
-    <!-- 5. Информационный блок фильма (справа от постера) -->
-    <LinearLayout
-        android:id="@+id/info_container"
+    <!-- 4. Скроллируемый контейнер для контента карточки фильма -->
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/details_scroll_view"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="24dp"
-        android:layout_marginEnd="56dp"
-        android:orientation="vertical"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/poster_card"
-        app:layout_constraintTop_toTopOf="@+id/poster_card">
-
-        <!-- Название фильма -->
-        <TextView
-            android:id="@+id/details_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:shadowColor="#CC000000"
-            android:shadowDx="0"
-            android:shadowDy="2"
-            android:shadowRadius="6"
-            android:textColor="@color/text_primary"
-            android:textSize="32sp"
-            android:textStyle="bold"
-            tools:text="Интерстеллар" />
-
-        <!-- Оригинальное название -->
-        <TextView
-            android:id="@+id/details_original_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp"
-            tools:text="Interstellar" />
-
-        <!-- Бейджи: Возраст, Рейтинг, Год, Хронометраж -->
-        <LinearLayout
-            android:id="@+id/badges_layout"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/badge_age"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="10dp"
-                android:background="@drawable/bg_badge_rounded"
-                android:paddingStart="6dp"
-                android:paddingTop="2dp"
-                android:paddingEnd="6dp"
-                android:paddingBottom="2dp"
-                android:textColor="@color/text_primary"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                tools:text="16+" />
-
-            <TextView
-                android:id="@+id/badge_rating"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="10dp"
-                android:textColor="#FFC107"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                tools:text="★ 8.6" />
-
-            <TextView
-                android:id="@+id/badge_year"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="10dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp"
-                tools:text="2014" />
-
-            <TextView
-                android:id="@+id/badge_runtime"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp"
-                tools:text="169 мин" />
-        </LinearLayout>
-
-        <!-- Синопсис / Описание сюжета -->
-        <TextView
-            android:id="@+id/details_overview"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:ellipsize="end"
-            android:lineSpacingExtra="3dp"
-            android:maxLines="4"
-            android:shadowColor="#99000000"
-            android:shadowDx="0"
-            android:shadowDy="1"
-            android:shadowRadius="4"
-            android:textColor="#D5D5D5"
-            android:textSize="14sp"
-            tools:text="Когда засуха, пыльные бури и вымирание растений приводят человечество к продовольственному кризису, коллектив исследователей и учёных отправляется сквозь червоточину в поисках нового дома..." />
-
-        <!-- 3 кнопки действий в стиле NUM -->
-        <LinearLayout
-            android:id="@+id/actions_layout"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/btn_watch"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_action_btn"
-                android:clickable="true"
-                android:drawableStart="@drawable/ic_play"
-                android:drawablePadding="10dp"
-                android:drawableTint="@color/color_action_btn_text"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:gravity="center_vertical"
-                android:paddingStart="22dp"
-                android:paddingTop="10dp"
-                android:paddingEnd="22dp"
-                android:paddingBottom="10dp"
-                android:text="Смотреть"
-                android:textColor="@color/color_action_btn_text"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/btn_sources"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:background="@drawable/bg_action_btn"
-                android:clickable="true"
-                android:drawableStart="@drawable/ic_search"
-                android:drawablePadding="10dp"
-                android:drawableTint="@color/color_action_btn_text"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:gravity="center_vertical"
-                android:paddingStart="20dp"
-                android:paddingTop="10dp"
-                android:paddingEnd="20dp"
-                android:paddingBottom="10dp"
-                android:text="Источники"
-                android:textColor="@color/color_action_btn_text"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/btn_trailer"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:background="@drawable/bg_action_btn"
-                android:clickable="true"
-                android:drawableStart="@drawable/ic_trailer"
-                android:drawablePadding="10dp"
-                android:drawableTint="@color/color_action_btn_text"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:gravity="center_vertical"
-                android:paddingStart="20dp"
-                android:paddingTop="10dp"
-                android:paddingEnd="20dp"
-                android:paddingBottom="10dp"
-                android:text="Трейлер"
-                android:textColor="@color/color_action_btn_text"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/btn_favorite"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="14dp"
-                android:background="@drawable/bg_action_btn"
-                android:clickable="true"
-                android:drawableStart="@drawable/ic_favorite_border"
-                android:drawablePadding="10dp"
-                android:drawableTint="@color/color_action_btn_text"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:gravity="center_vertical"
-                android:paddingStart="20dp"
-                android:paddingTop="10dp"
-                android:paddingEnd="20dp"
-                android:paddingBottom="10dp"
-                android:text="В избранное"
-                android:textColor="@color/color_action_btn_text"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- 6. Заголовок полки источников (скрыт по умолчанию) -->
-    <TextView
-        android:id="@+id/sources_header"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="56dp"
-        android:layout_marginBottom="8dp"
-        android:text="Источники (Rutube / VK Video)"
-        android:textColor="@color/text_primary"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@+id/sources_frame"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <!-- 7. Контейнер полки источников видео (скрыт по умолчанию) -->
-    <FrameLayout
-        android:id="@+id/sources_frame"
-        android:layout_width="0dp"
-        android:layout_height="115dp"
-        android:layout_marginBottom="24dp"
-        android:visibility="gone"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        android:clipToPadding="false"
+        android:scrollbars="none"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Горизонтальная полка карточек найденных видео -->
-        <androidx.leanback.widget.HorizontalGridView
-            android:id="@+id/sources_grid_view"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingStart="56dp"
-            android:paddingEnd="56dp" />
-
-        <!-- Индикатор фонового поиска источников -->
         <LinearLayout
-            android:id="@+id/sources_progress_layout"
-            android:layout_width="wrap_content"
+            android:id="@+id/details_content_layout"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:visibility="visible">
+            android:orientation="vertical"
+            android:paddingBottom="40dp"
+            android:animateLayoutChanges="true">
 
-            <ProgressBar
-                android:id="@+id/sources_progress"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:indeterminateTint="@color/brand_primary" />
-
-            <TextView
-                android:id="@+id/sources_progress_text"
-                android:layout_width="wrap_content"
+            <!-- Верхний блок: Постер + Инфо о фильме + Кнопки -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="Поиск видео на Rutube и VK Video..."
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
-        </LinearLayout>
+                android:orientation="horizontal"
+                android:paddingStart="56dp"
+                android:paddingEnd="56dp"
+                android:paddingTop="36dp">
 
-        <!-- Сообщение, если ничего не найдено -->
-        <TextView
-            android:id="@+id/sources_empty_text"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="Видео не найдены на Rutube и VK Video"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp"
-            android:visibility="gone" />
-    </FrameLayout>
+                <!-- Постер фильма -->
+                <FrameLayout
+                    android:id="@+id/poster_card"
+                    android:layout_width="190dp"
+                    android:layout_height="280dp"
+                    android:background="@drawable/bg_poster_card"
+                    android:foreground="@drawable/bg_poster_card_border"
+                    android:outlineProvider="background"
+                    android:clipToOutline="true">
+
+                    <ImageView
+                        android:id="@+id/details_poster"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="@string/app_name"
+                        android:scaleType="centerCrop" />
+                </FrameLayout>
+
+                <!-- Информационный блок справа от постера -->
+                <LinearLayout
+                    android:id="@+id/info_container"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="24dp"
+                    android:orientation="vertical">
+
+                    <!-- Название фильма -->
+                    <TextView
+                        android:id="@+id/details_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:shadowColor="#CC000000"
+                        android:shadowDx="0"
+                        android:shadowDy="2"
+                        android:shadowRadius="6"
+                        android:textColor="@color/text_primary"
+                        android:textSize="32sp"
+                        android:textStyle="bold"
+                        tools:text="Интерстеллар" />
+
+                    <!-- Оригинальное название -->
+                    <TextView
+                        android:id="@+id/details_original_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp"
+                        tools:text="Interstellar" />
+
+                    <!-- Бейджи: Возраст, Рейтинг, Год, Хронометраж -->
+                    <LinearLayout
+                        android:id="@+id/badges_layout"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/badge_age"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="10dp"
+                            android:background="@drawable/bg_badge_rounded"
+                            android:paddingStart="6dp"
+                            android:paddingTop="2dp"
+                            android:paddingEnd="6dp"
+                            android:paddingBottom="2dp"
+                            android:textColor="@color/text_primary"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            tools:text="16+" />
+
+                        <TextView
+                            android:id="@+id/badge_rating"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="10dp"
+                            android:textColor="#FFC107"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            tools:text="★ 8.6" />
+
+                        <TextView
+                            android:id="@+id/badge_year"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="10dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp"
+                            tools:text="2014" />
+
+                        <TextView
+                            android:id="@+id/badge_runtime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp"
+                            tools:text="169 мин" />
+                    </LinearLayout>
+
+                    <!-- Синопсис / Описание сюжета -->
+                    <TextView
+                        android:id="@+id/details_overview"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:ellipsize="end"
+                        android:lineSpacingExtra="3dp"
+                        android:maxLines="4"
+                        android:shadowColor="#99000000"
+                        android:shadowDx="0"
+                        android:shadowDy="1"
+                        android:shadowRadius="4"
+                        android:textColor="#D5D5D5"
+                        android:textSize="14sp"
+                        tools:text="Когда засуха, пыльные бури и вымирание растений приводят человечество к продовольственному кризису..." />
+
+                    <!-- Кнопки действий -->
+                    <LinearLayout
+                        android:id="@+id/actions_layout"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="18dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/btn_watch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_action_btn"
+                            android:clickable="true"
+                            android:drawableStart="@drawable/ic_play"
+                            android:drawablePadding="10dp"
+                            android:drawableTint="@color/color_action_btn_text"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:gravity="center_vertical"
+                            android:paddingStart="22dp"
+                            android:paddingTop="10dp"
+                            android:paddingEnd="22dp"
+                            android:paddingBottom="10dp"
+                            android:text="Смотреть"
+                            android:textColor="@color/color_action_btn_text"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/btn_sources"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:background="@drawable/bg_action_btn"
+                            android:clickable="true"
+                            android:drawableStart="@drawable/ic_search"
+                            android:drawablePadding="10dp"
+                            android:drawableTint="@color/color_action_btn_text"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:gravity="center_vertical"
+                            android:paddingStart="20dp"
+                            android:paddingTop="10dp"
+                            android:paddingEnd="20dp"
+                            android:paddingBottom="10dp"
+                            android:text="Источники"
+                            android:textColor="@color/color_action_btn_text"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/btn_trailer"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:background="@drawable/bg_action_btn"
+                            android:clickable="true"
+                            android:drawableStart="@drawable/ic_trailer"
+                            android:drawablePadding="10dp"
+                            android:drawableTint="@color/color_action_btn_text"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:gravity="center_vertical"
+                            android:paddingStart="20dp"
+                            android:paddingTop="10dp"
+                            android:paddingEnd="20dp"
+                            android:paddingBottom="10dp"
+                            android:text="Трейлер"
+                            android:textColor="@color/color_action_btn_text"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/btn_favorite"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:background="@drawable/bg_action_btn"
+                            android:clickable="true"
+                            android:drawableStart="@drawable/ic_favorite_border"
+                            android:drawablePadding="10dp"
+                            android:drawableTint="@color/color_action_btn_text"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:gravity="center_vertical"
+                            android:paddingStart="20dp"
+                            android:paddingTop="10dp"
+                            android:paddingEnd="20dp"
+                            android:paddingBottom="10dp"
+                            android:text="В избранное"
+                            android:textColor="@color/color_action_btn_text"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- 2. Блок источников видео (скрыт по умолчанию, показывается при нажатии "Смотреть") -->
+            <LinearLayout
+                android:id="@+id/sources_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="24dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/sources_header"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="56dp"
+                    android:layout_marginBottom="8dp"
+                    android:text="Источники (Rutube / VK Video)"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <FrameLayout
+                    android:id="@+id/sources_frame"
+                    android:layout_width="match_parent"
+                    android:layout_height="115dp">
+
+                    <androidx.leanback.widget.HorizontalGridView
+                        android:id="@+id/sources_grid_view"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:clipToPadding="false"
+                        android:paddingStart="56dp"
+                        android:paddingEnd="56dp" />
+
+                    <!-- Индикатор фонового поиска источников -->
+                    <LinearLayout
+                        android:id="@+id/sources_progress_layout"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="visible">
+
+                        <ProgressBar
+                            android:id="@+id/sources_progress"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:indeterminateTint="@color/brand_primary" />
+
+                        <TextView
+                            android:id="@+id/sources_progress_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:text="Поиск видео на Rutube и VK Video..."
+                            android:textColor="@color/text_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/sources_empty_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="Видео не найдены на Rutube и VK Video"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp"
+                        android:visibility="gone" />
+                </FrameLayout>
+            </LinearLayout>
+
+            <!-- 3. Блок актеров (первые 12) -->
+            <LinearLayout
+                android:id="@+id/actors_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="20dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/actors_header"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="56dp"
+                    android:layout_marginBottom="6dp"
+                    android:text="В главных ролях"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/actors_grid_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="185dp"
+                    android:clipToPadding="false"
+                    android:paddingStart="56dp"
+                    android:paddingEnd="56dp" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -50,7 +50,7 @@ interface TmdbApi {
         @Path("movie_id") movieId: Long,
         @Query("api_key") apiKey: String,
         @Query("language") language: String = "ru-RU",
-        @Query("append_to_response") appendToResponse: String = "release_dates"
+        @Query("append_to_response") appendToResponse: String = "release_dates,credits"
     ): TmdbMovieDetailsDto
 
     @GET("tv/{tv_id}")
@@ -58,7 +58,7 @@ interface TmdbApi {
         @Path("tv_id") tvId: Long,
         @Query("api_key") apiKey: String,
         @Query("language") language: String = "ru-RU",
-        @Query("append_to_response") appendToResponse: String = "content_ratings"
+        @Query("append_to_response") appendToResponse: String = "content_ratings,credits"
     ): TmdbTvDetailsDto
 
     @GET("search/multi")

@@ -190,10 +190,6 @@ class MainActivity : FragmentActivity() {
                     loadCategory(category)
                     if (category == NumCategory.SEARCH) {
                         searchEditText.requestFocus()
-                    } else {
-                        posterGridView.post {
-                            posterGridView.requestFocus()
-                        }
                     }
                 }
             },
@@ -299,6 +295,7 @@ class MainActivity : FragmentActivity() {
         currentPage = 1
         canLoadMore = true
         isLoadingNextPage = false
+        clearHeroSpotlight()
 
         if (category == NumCategory.SEARCH) {
             searchContainer.visibility = View.VISIBLE
@@ -319,6 +316,7 @@ class MainActivity : FragmentActivity() {
         searchContainer.visibility = View.GONE
         loadingProgress.visibility = View.VISIBLE
         emptyText.visibility = View.GONE
+        posterAdapter.submitList(emptyList())
 
         currentFeedJob = lifecycleScope.launch {
             try {
@@ -352,6 +350,7 @@ class MainActivity : FragmentActivity() {
                     emptyText.visibility = View.VISIBLE
                     posterAdapter.submitList(emptyList())
                     clearHeroSpotlight()
+                    focusSideMenu()
                 }
             } catch (e: Exception) {
                 loadingProgress.visibility = View.GONE
@@ -359,6 +358,7 @@ class MainActivity : FragmentActivity() {
                 emptyText.visibility = View.VISIBLE
                 posterAdapter.submitList(emptyList())
                 clearHeroSpotlight()
+                focusSideMenu()
             }
         }
     }
@@ -663,6 +663,8 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun clearHeroSpotlight() {
+        detailsFetchJob?.cancel()
+        currentMediaItem = null
         heroBackdrop.setImageDrawable(null)
         heroTitle.text = ""
         badgeWatchProgress.visibility = View.GONE

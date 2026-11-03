@@ -37,7 +37,8 @@ data class TmdbMovieDetailsDto(
     @SerializedName("runtime") val runtime: Int?,
     @SerializedName("vote_average") val voteAverage: Double?,
     @SerializedName("imdb_id") val imdbId: String?,
-    @SerializedName("release_dates") val releaseDates: TmdbReleaseDatesContainer?
+    @SerializedName("release_dates") val releaseDates: TmdbReleaseDatesContainer?,
+    @SerializedName("credits") val credits: TmdbCreditsDto? = null
 )
 
 data class TmdbTvDetailsDto(
@@ -52,7 +53,20 @@ data class TmdbTvDetailsDto(
     @SerializedName("vote_average") val voteAverage: Double?,
     @SerializedName("number_of_seasons") val numberOfSeasons: Int?,
     @SerializedName("number_of_episodes") val numberOfEpisodes: Int?,
-    @SerializedName("content_ratings") val contentRatings: TmdbContentRatingsContainer?
+    @SerializedName("content_ratings") val contentRatings: TmdbContentRatingsContainer?,
+    @SerializedName("credits") val credits: TmdbCreditsDto? = null
+)
+
+data class TmdbCreditsDto(
+    @SerializedName("cast") val cast: List<TmdbCastItemDto>? = null
+)
+
+data class TmdbCastItemDto(
+    @SerializedName("id") val id: Long,
+    @SerializedName("name") val name: String?,
+    @SerializedName("character") val character: String?,
+    @SerializedName("profile_path") val profilePath: String?,
+    @SerializedName("order") val order: Int? = null
 )
 
 data class TmdbReleaseDatesContainer(

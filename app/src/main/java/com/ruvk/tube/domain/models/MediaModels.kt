@@ -27,7 +27,15 @@ data class MediaItem(
     val ageRatingDescription: String? = null,
     val watchPositionMs: Long = 0L,
     val watchDurationMs: Long = 0L,
-    val lastStreamUrl: String? = null
+    val lastStreamUrl: String? = null,
+    val cast: List<CastMember> = emptyList()
+) : Serializable
+
+data class CastMember(
+    val id: Long,
+    val name: String,
+    val character: String,
+    val profileUrl: String?
 ) : Serializable
 
 data class VideoSource(

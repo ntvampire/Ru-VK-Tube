@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cast_container"
+    android:layout_width="110dp"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="12dp"
+    android:layout_marginTop="6dp"
+    android:layout_marginBottom="6dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:background="@drawable/bg_cast_selector"
+    android:orientation="vertical"
+    android:padding="6dp">
+
+    <!-- Фотография актера -->
+    <FrameLayout
+        android:id="@+id/cast_photo_card"
+        android:layout_width="98dp"
+        android:layout_height="125dp"
+        android:layout_gravity="center_horizontal"
+        android:background="@drawable/bg_poster_card"
+        android:foreground="@drawable/bg_poster_card_border"
+        android:outlineProvider="background"
+        android:clipToOutline="true">
+
+        <ImageView
+            android:id="@+id/cast_photo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="Фото актера" />
+    </FrameLayout>
+
+    <!-- Имя актера -->
+    <TextView
+        android:id="@+id/cast_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        tools:text="Мэттью Макконахи" />
+
+    <!-- Роль / Персонаж -->
+    <TextView
+        android:id="@+id/cast_character"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        tools:text="Купер" />
+
+</LinearLayout>

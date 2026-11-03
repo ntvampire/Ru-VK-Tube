@@ -2,6 +2,7 @@ package com.ruvk.tube.data.api.tmdb
 
 import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.data.network.NetworkClient
+import com.ruvk.tube.domain.models.CastMember
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
 import retrofit2.Retrofit
@@ -67,6 +68,14 @@ class TmdbRepository {
     suspend fun getMovieDetails(id: Long): MediaItem {
         val dto = api.getMovieDetails(id, effectiveApiKey)
         val (ageRating, ageDesc) = extractMovieAgeRating(dto.releaseDates)
+        val castMembers = dto.credits?.cast?.take(12)?.map { castItem ->
+            CastMember(
+                id = castItem.id,
+                name = castItem.name ?: "",
+                character = castItem.character ?: "",
+                profileUrl = castItem.profilePath?.let { "$IMAGE_BASE_PROFILE$it" }
+            )
+        } ?: emptyList()
 
         return MediaItem(
             id = dto.id,
@@ -82,13 +91,22 @@ class TmdbRepository {
             mediaType = MediaType.MOVIE,
             imdbId = dto.imdbId,
             ageRating = ageRating,
-            ageRatingDescription = ageDesc
+            ageRatingDescription = ageDesc,
+            cast = castMembers
         )
     }
 
     suspend fun getTvDetails(id: Long): MediaItem {
         val dto = api.getTvDetails(id, effectiveApiKey)
         val (ageRating, ageDesc) = extractTvAgeRating(dto.contentRatings)
+        val castMembers = dto.credits?.cast?.take(12)?.map { castItem ->
+            CastMember(
+                id = castItem.id,
+                name = castItem.name ?: "",
+                character = castItem.character ?: "",
+                profileUrl = castItem.profilePath?.let { "$IMAGE_BASE_PROFILE$it" }
+            )
+        } ?: emptyList()
 
         return MediaItem(
             id = dto.id,
@@ -103,7 +121,8 @@ class TmdbRepository {
             runtimeMinutes = dto.episodeRunTime?.firstOrNull() ?: 45,
             mediaType = MediaType.TV,
             ageRating = ageRating,
-            ageRatingDescription = ageDesc
+            ageRatingDescription = ageDesc,
+            cast = castMembers
         )
     }
 
@@ -211,5 +230,6 @@ class TmdbRepository {
         const val DEFAULT_API_KEY = "4e44d9029b1270a757cddc766a1bcb63"
         const val IMAGE_BASE_POSTER = "https://image.tmdb.org/t/p/w500"
         const val IMAGE_BASE_BACKDROP = "https://image.tmdb.org/t/p/original"
+        const val IMAGE_BASE_PROFILE = "https://image.tmdb.org/t/p/w185"
     }
 }

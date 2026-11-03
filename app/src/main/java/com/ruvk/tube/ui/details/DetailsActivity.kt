@@ -18,6 +18,7 @@ import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
 import com.ruvk.tube.data.db.FavoriteEntity
 import com.ruvk.tube.data.local.AppPreferences
+import com.ruvk.tube.domain.models.CastMember
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
 import com.ruvk.tube.domain.models.VideoSource
@@ -46,11 +47,16 @@ class DetailsActivity : FragmentActivity() {
     private lateinit var btnTrailer: TextView
     private lateinit var btnFavorite: TextView
 
+    private lateinit var sourcesSection: LinearLayout
     private lateinit var sourcesHeader: TextView
     private lateinit var sourcesFrame: View
     private lateinit var sourcesGridView: androidx.leanback.widget.HorizontalGridView
     private lateinit var sourcesProgressLayout: LinearLayout
     private lateinit var sourcesEmptyText: TextView
+
+    private lateinit var actorsSection: LinearLayout
+    private lateinit var actorsGridView: androidx.leanback.widget.HorizontalGridView
+    private lateinit var castAdapter: NumCastAdapter
 
     private lateinit var sourceAdapter: NumSourceAdapter
 
@@ -120,15 +126,19 @@ class DetailsActivity : FragmentActivity() {
         btnTrailer = findViewById(R.id.btn_trailer)
         btnFavorite = findViewById(R.id.btn_favorite)
 
+        sourcesSection = findViewById(R.id.sources_section)
         sourcesHeader = findViewById(R.id.sources_header)
         sourcesFrame = findViewById(R.id.sources_frame)
         sourcesGridView = findViewById(R.id.sources_grid_view)
         sourcesProgressLayout = findViewById(R.id.sources_progress_layout)
         sourcesEmptyText = findViewById(R.id.sources_empty_text)
 
+        actorsSection = findViewById(R.id.actors_section)
+        actorsGridView = findViewById(R.id.actors_grid_view)
+
         // По умолчанию полка источников скрыта до нажатия кнопки "Смотреть" или "Источники"
-        sourcesHeader.visibility = View.GONE
-        sourcesFrame.visibility = View.GONE
+        sourcesSection.visibility = View.GONE
+        actorsSection.visibility = View.GONE
 
         // Настройка полки источников (1 ряд)
         sourcesGridView.setNumRows(1)
@@ -136,6 +146,11 @@ class DetailsActivity : FragmentActivity() {
             startPlayback(source)
         }
         sourcesGridView.adapter = sourceAdapter
+
+        // Настройка полки актеров (1 ряд)
+        actorsGridView.setNumRows(1)
+        castAdapter = NumCastAdapter()
+        actorsGridView.adapter = castAdapter
 
         if (!savedStreamUrl.isNullOrBlank() && savedPositionMs > 5_000L) {
             btnWatch.text = "Продолжить (${formatTime(savedPositionMs)})"
@@ -154,22 +169,33 @@ class DetailsActivity : FragmentActivity() {
 
     private fun updateFocusNavigation() {
         val hasSourcesBtn = btnSources.visibility == View.VISIBLE
+        val isSourcesShown = sourcesSection.visibility == View.VISIBLE
+        val isActorsShown = actorsSection.visibility == View.VISIBLE
+
+        val firstBelowId = when {
+            isSourcesShown -> R.id.sources_grid_view
+            isActorsShown -> R.id.actors_grid_view
+            else -> View.NO_ID
+        }
 
         btnWatch.nextFocusRightId = if (hasSourcesBtn) R.id.btn_sources else R.id.btn_trailer
-        btnWatch.nextFocusDownId = R.id.sources_grid_view
+        btnWatch.nextFocusDownId = firstBelowId
 
         btnSources.nextFocusLeftId = R.id.btn_watch
         btnSources.nextFocusRightId = R.id.btn_trailer
-        btnSources.nextFocusDownId = R.id.sources_grid_view
+        btnSources.nextFocusDownId = firstBelowId
 
         btnTrailer.nextFocusLeftId = if (hasSourcesBtn) R.id.btn_sources else R.id.btn_watch
         btnTrailer.nextFocusRightId = R.id.btn_favorite
-        btnTrailer.nextFocusDownId = R.id.sources_grid_view
+        btnTrailer.nextFocusDownId = firstBelowId
 
         btnFavorite.nextFocusLeftId = R.id.btn_trailer
-        btnFavorite.nextFocusDownId = R.id.sources_grid_view
+        btnFavorite.nextFocusDownId = firstBelowId
 
         sourcesGridView.nextFocusUpId = R.id.btn_watch
+        sourcesGridView.nextFocusDownId = if (isActorsShown) R.id.actors_grid_view else View.NO_ID
+
+        actorsGridView.nextFocusUpId = if (isSourcesShown) R.id.sources_grid_view else R.id.btn_watch
     }
 
     private fun setupListeners() {
@@ -184,9 +210,11 @@ class DetailsActivity : FragmentActivity() {
 
             // Стандартное поведение (если сохраненного потока нет):
             if (sourcesList.isNotEmpty()) {
+                sourcesSection.visibility = View.VISIBLE
                 sourcesGridView.visibility = View.VISIBLE
                 sourcesHeader.visibility = View.VISIBLE
                 sourcesFrame.visibility = View.VISIBLE
+                updateFocusNavigation()
                 sourcesGridView.post {
                     sourcesGridView.setSelectedPosition(0)
                     sourcesGridView.requestFocus()
@@ -201,9 +229,11 @@ class DetailsActivity : FragmentActivity() {
         btnSources.setOnClickListener {
             val item = mediaItem ?: return@setOnClickListener
             if (sourcesList.isNotEmpty()) {
+                sourcesSection.visibility = View.VISIBLE
                 sourcesGridView.visibility = View.VISIBLE
                 sourcesHeader.visibility = View.VISIBLE
                 sourcesFrame.visibility = View.VISIBLE
+                updateFocusNavigation()
                 sourcesGridView.post {
                     sourcesGridView.setSelectedPosition(0)
                     sourcesGridView.requestFocus()
@@ -281,19 +311,36 @@ class DetailsActivity : FragmentActivity() {
 
         overviewText.text = if (item.overview.isNotBlank()) item.overview else "Описание сюжета отсутствует"
 
-        // Фоновая дозагрузка деталей TMDB, если возраст или хронометраж отсутствуют
-        if (item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0) {
+        // Привязываем актеров если они уже есть в объекте
+        if (item.cast.isNotEmpty()) {
+            bindCast(item.cast)
+        }
+
+        // Фоновая дозагрузка деталей TMDB (актеры, возрастной рейтинг, хронометраж)
+        if (item.cast.isEmpty() || item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0) {
             fetchExtraDetails(item)
         }
+    }
+
+    private fun bindCast(cast: List<CastMember>) {
+        if (cast.isNotEmpty()) {
+            actorsSection.visibility = View.VISIBLE
+            castAdapter.submitList(cast)
+        } else {
+            actorsSection.visibility = View.GONE
+        }
+        updateFocusNavigation()
     }
 
     private fun fetchExtraDetails(item: MediaItem) {
         lifecycleScope.launch {
             try {
-                val detailed = if (item.mediaType == MediaType.MOVIE) {
-                    RuVkTubeApp.instance.tmdbRepository.getMovieDetails(item.id)
-                } else {
-                    RuVkTubeApp.instance.tmdbRepository.getTvDetails(item.id)
+                val detailed = withContext(Dispatchers.IO) {
+                    if (item.mediaType == MediaType.MOVIE) {
+                        RuVkTubeApp.instance.tmdbRepository.getMovieDetails(item.id)
+                    } else {
+                        RuVkTubeApp.instance.tmdbRepository.getTvDetails(item.id)
+                    }
                 }
                 mediaItem = detailed
 
@@ -305,20 +352,25 @@ class DetailsActivity : FragmentActivity() {
                     badgeRuntime.visibility = View.VISIBLE
                     badgeRuntime.text = "${detailed.runtimeMinutes} мин"
                 }
+                if (detailed.cast.isNotEmpty()) {
+                    bindCast(detailed.cast)
+                }
             } catch (e: Exception) {
-                // Игнорируем
+                // Игнорируем ошибки подгрузки
             }
         }
     }
 
     private fun searchSourcesAndFocus(item: MediaItem) {
         isSearchingSources = true
+        sourcesSection.visibility = View.VISIBLE
         sourcesHeader.visibility = View.VISIBLE
         sourcesHeader.text = "Источники"
         sourcesFrame.visibility = View.VISIBLE
         sourcesProgressLayout.visibility = View.VISIBLE
         sourcesEmptyText.visibility = View.GONE
         sourcesGridView.visibility = View.GONE
+        updateFocusNavigation()
 
         searchSourcesJob?.cancel()
         searchSourcesJob = lifecycleScope.launch {
@@ -340,6 +392,7 @@ class DetailsActivity : FragmentActivity() {
                 sourcesGridView.visibility = View.VISIBLE
                 sourcesHeader.text = "Источники (${sources.size})"
                 sourceAdapter.submitList(sources)
+                updateFocusNavigation()
 
                 // Фокусируем курсор на первом найденном видео в панели источников
                 sourcesGridView.post {
@@ -350,6 +403,7 @@ class DetailsActivity : FragmentActivity() {
                 sourcesGridView.visibility = View.GONE
                 sourcesEmptyText.visibility = View.VISIBLE
                 sourcesHeader.text = "Источники"
+                updateFocusNavigation()
                 Toast.makeText(this@DetailsActivity, getString(R.string.no_sources_found), Toast.LENGTH_LONG).show()
             }
         }
@@ -520,6 +574,25 @@ class DetailsActivity : FragmentActivity() {
             btnFavorite.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_favorite_border, 0, 0, 0)
             btnFavorite.text = "В избранное"
         }
+    }
+
+    override fun onBackPressed() {
+        val current = currentFocus
+        if (current != null && (isViewDescendant(current, sourcesFrame) || isViewDescendant(current, actorsSection))) {
+            btnWatch.requestFocus()
+            return
+        }
+        super.onBackPressed()
+    }
+
+    private fun isViewDescendant(view: View?, parent: View?): Boolean {
+        if (view == null || parent == null) return false
+        var p = view.parent
+        while (p != null) {
+            if (p === parent) return true
+            p = p.parent
+        }
+        return false
     }
 
     companion object {
