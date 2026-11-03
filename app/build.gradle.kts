@@ -12,8 +12,8 @@ android {
         applicationId = "com.ruvk.tube"
         minSdk = 28
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 9
+        versionName = "1.0.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -51,7 +51,7 @@ android {
         outputs.all {
             val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
             if (output != null && variantName == "release") {
-                output.outputFileName = "Ru-VK-Tube-${defaultConfig.versionName}.apk"
+                output.outputFileName = "RuVK-Hub-${defaultConfig.versionName}.apk"
             }
         }
     }

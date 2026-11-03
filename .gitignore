@@ -8,4 +8,5 @@ app/build/
 *.hprof
 .externalNativeBuild
 .cxx
-*.png
+emulator_screen.png
+!app/src/main/res/**/*.png
