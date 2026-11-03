@@ -42,6 +42,8 @@ class InternalPlayerActivity : AppCompatActivity() {
     private var rating: Double = 0.0
     private var overview: String? = null
     private var mediaType: String = "MOVIE"
+    private var season: Int = 0
+    private var episode: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,13 +62,19 @@ class InternalPlayerActivity : AppCompatActivity() {
         rating = intent.getDoubleExtra(EXTRA_RATING, 0.0)
         overview = intent.getStringExtra(EXTRA_OVERVIEW)
         mediaType = intent.getStringExtra(EXTRA_MEDIA_TYPE) ?: "MOVIE"
+        season = intent.getIntExtra(EXTRA_SEASON, 0)
+        episode = intent.getIntExtra(EXTRA_EPISODE, 0)
 
         playerView = findViewById(R.id.player_view)
         bufferingBar = findViewById(R.id.player_buffering)
 
         val titleView = playerView.findViewById<TextView>(R.id.player_title)
         val qualityView = playerView.findViewById<TextView>(R.id.player_quality_badge)
-        titleView?.text = title
+        titleView?.text = if (season > 0 && episode > 0) {
+            "$movieTitle (Сезон $season, Серия $episode)"
+        } else {
+            title
+        }
         qualityView?.text = quality
 
         initPlayer()
@@ -248,6 +256,8 @@ class InternalPlayerActivity : AppCompatActivity() {
                         year = year,
                         rating = rating,
                         overview = overview,
+                        season = season,
+                        episode = episode,
                         lastStreamUrl = streamUrl
                     )
                 )
@@ -269,5 +279,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_RATING = "extra_rating"
         const val EXTRA_OVERVIEW = "extra_overview"
         const val EXTRA_MEDIA_TYPE = "extra_media_type"
+        const val EXTRA_SEASON = "extra_season"
+        const val EXTRA_EPISODE = "extra_episode"
     }
 }

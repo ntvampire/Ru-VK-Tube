@@ -522,7 +522,9 @@ class MainActivity : FragmentActivity() {
                     mediaType = if (h.mediaType.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE,
                     watchPositionMs = h.positionMs,
                     watchDurationMs = h.durationMs,
-                    lastStreamUrl = h.lastStreamUrl
+                    lastStreamUrl = h.lastStreamUrl,
+                    lastSeason = h.season,
+                    lastEpisode = h.episode
                 )
             )
         }

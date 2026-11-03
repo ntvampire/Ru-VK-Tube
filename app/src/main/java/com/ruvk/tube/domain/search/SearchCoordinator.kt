@@ -168,6 +168,197 @@ class SearchCoordinator(
         allResults
     }
 
+    suspend fun findEpisodeSources(
+        title: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        runtimeMinutes: Int = 0,
+        originalTitle: String? = null,
+        maxSupportedHeight: Int = 1080
+    ): List<VideoSource> = coroutineScope {
+        val rutubeResults = mutableListOf<VideoSource>()
+        val vkResults = mutableListOf<VideoSource>()
+        val targetSeconds = runtimeMinutes * 60
+
+        val sPadded = seasonNumber.toString().padStart(2, '0')
+        val ePadded = episodeNumber.toString().padStart(2, '0')
+
+        val queries = mutableListOf<String>()
+        queries.add("$title $seasonNumber сезон $episodeNumber серия")
+        queries.add("$title s${sPadded}e${ePadded}")
+        queries.add("$title $episodeNumber серия")
+        queries.add("$title $seasonNumber сезон $episodeNumber")
+
+        if (!originalTitle.isNullOrBlank() && originalTitle != title) {
+            queries.add("$originalTitle s${sPadded}e${ePadded}")
+            queries.add("$originalTitle season $seasonNumber episode $episodeNumber")
+        }
+
+        for (q in queries) {
+            val rutubeDeferred = if (rutubeResults.size < 10) async { rutubeClient.searchVideos(q) } else null
+            val vkDeferred = if (vkResults.size < 10) async { vkClient.searchVideos(q) } else null
+
+            val rutubeRaw = rutubeDeferred?.await() ?: emptyList()
+            val vkRaw = vkDeferred?.await() ?: emptyList()
+
+            // 1. Фильтрация и извлечение потоков Rutube
+            for (item in rutubeRaw) {
+                if (rutubeResults.size >= 10) break
+                val lowerTitle = item.title.lowercase(Locale.ROOT)
+                if (movieStopWords.any { lowerTitle.contains(it) }) continue
+                if (camRegex.containsMatchIn(lowerTitle)) continue
+                if (!isTitleRelevant(item.title, title, originalTitle)) continue
+                if (!isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber)) continue
+
+                if (targetSeconds > 0) {
+                    val minSec = (targetSeconds * 0.40).toInt()
+                    val maxSec = (targetSeconds * 1.60).toInt()
+                    if (item.duration !in minSec..maxSec) continue
+                } else if (item.duration < 10 * 60 || item.duration > 110 * 60) {
+                    continue
+                }
+
+                val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
+                val quality = detectRutubeQuality(streamUrl, lowerTitle)
+                val voiceover = detectVoiceover(lowerTitle)
+                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight)
+
+                if (rutubeResults.none { it.streamUrl == streamUrl }) {
+                    rutubeResults.add(
+                        VideoSource(
+                            platform = VideoPlatform.RUTUBE,
+                            title = item.title,
+                            streamUrl = streamUrl,
+                            quality = quality,
+                            durationSeconds = item.duration,
+                            voiceover = voiceover,
+                            isTrailer = false,
+                            score = score
+                        )
+                    )
+                }
+            }
+
+            // 2. Фильтрация и извлечение потоков VK
+            for (item in vkRaw) {
+                if (vkResults.size >= 10) break
+                val lowerTitle = item.title.lowercase(Locale.ROOT)
+                if (movieStopWords.any { lowerTitle.contains(it) }) continue
+                if (camRegex.containsMatchIn(lowerTitle)) continue
+                if (!isTitleRelevant(item.title, title, originalTitle)) continue
+                if (!isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber)) continue
+
+                if (targetSeconds > 0) {
+                    val minSec = (targetSeconds * 0.40).toInt()
+                    val maxSec = (targetSeconds * 1.60).toInt()
+                    if (item.durationSeconds > 0 && item.durationSeconds !in minSec..maxSec) continue
+                } else if (item.durationSeconds in 1..(10 * 60) || item.durationSeconds > 110 * 60) {
+                    continue
+                }
+
+                val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
+                val streamUrl = streamInfo.hlsUrl
+                    ?: streamInfo.directUrls["1080"]
+                    ?: streamInfo.directUrls["720"]
+                    ?: streamInfo.directUrls["480"]
+                    ?: continue
+
+                val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
+                val voiceover = detectVoiceover(lowerTitle)
+                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight)
+
+                if (vkResults.none { it.streamUrl == streamUrl }) {
+                    vkResults.add(
+                        VideoSource(
+                            platform = VideoPlatform.VK,
+                            title = item.title,
+                            streamUrl = streamUrl,
+                            quality = quality,
+                            durationSeconds = item.durationSeconds,
+                            voiceover = voiceover,
+                            isTrailer = false,
+                            score = score
+                        )
+                    )
+                }
+            }
+
+            if (rutubeResults.isNotEmpty() && vkResults.isNotEmpty()) break
+        }
+
+        val allResults = (rutubeResults + vkResults).sortedByDescending { it.score }
+        Log.d("RuVkTube", "findEpisodeSources for '$title S${seasonNumber}E${episodeNumber}': Rutube=${rutubeResults.size}, VK=${vkResults.size}")
+        allResults
+    }
+
+    private fun isEpisodeMatch(lowerTitle: String, seasonNumber: Int, episodeNumber: Int): Boolean {
+        // Исключаем сборники всех серий
+        if (lowerTitle.contains("все серии") || lowerTitle.contains("серии подряд")) {
+            return false
+        }
+
+        // Проверяем явное указание другого сезона (если сезон > 1 или в названии есть "сезон")
+        val otherSeasonRegex = Regex("(?i)\\b(\\d+)\\s*(?:сезон|сез|season)\\b")
+        val matchSeason = otherSeasonRegex.find(lowerTitle)
+        if (matchSeason != null) {
+            val foundSeason = matchSeason.groupValues[1].toIntOrNull()
+            if (foundSeason != null && foundSeason != seasonNumber) {
+                return false
+            }
+        }
+
+        val sPadded = seasonNumber.toString().padStart(2, '0')
+        val ePadded = episodeNumber.toString().padStart(2, '0')
+
+        // 1. Шаблон S01E02 или S1E2
+        val sxxExxPattern = Regex("(?i)\\bs0?${seasonNumber}\\s*e0?${episodeNumber}\\b")
+        if (sxxExxPattern.containsMatchIn(lowerTitle)) {
+            return true
+        }
+
+        // 2. Шаблон "X серия" или "серия X"
+        val epPattern1 = Regex("(?i)(?:сери[яиею]|сер|выпуск|эпизод|ep)[\\s#№:]*0?${episodeNumber}\\b")
+        val epPattern2 = Regex("(?i)\\b0?${episodeNumber}[\\s-]*(?:сери[яиею]|сер|выпуск|эпизод|ep)\\b")
+
+        if (epPattern1.containsMatchIn(lowerTitle) || epPattern2.containsMatchIn(lowerTitle)) {
+            return true
+        }
+
+        return false
+    }
+
+    private fun calculateEpisodeScore(
+        lowerTitle: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        quality: String,
+        voiceover: String?,
+        maxSupportedHeight: Int
+    ): Int {
+        var score = 0
+        val sPadded = seasonNumber.toString().padStart(2, '0')
+        val ePadded = episodeNumber.toString().padStart(2, '0')
+
+        if (lowerTitle.contains("s${sPadded}e${ePadded}") || lowerTitle.contains("s${seasonNumber}e${episodeNumber}")) {
+            score += 35
+        } else if (lowerTitle.contains("$seasonNumber сезон") && lowerTitle.contains("$episodeNumber серия")) {
+            score += 40
+        } else if (lowerTitle.contains("$episodeNumber серия")) {
+            score += 25
+        }
+
+        if (voiceover != null) score += 30
+
+        val qualityHeight = DeviceCapabilityHelper.qualityToHeight(quality)
+        if (qualityHeight <= maxSupportedHeight) {
+            score += (qualityHeight / 10)
+        } else {
+            score += ((maxSupportedHeight / 10) - 20)
+        }
+
+        return score
+    }
+
     suspend fun findTrailers(
         title: String,
         year: Int,

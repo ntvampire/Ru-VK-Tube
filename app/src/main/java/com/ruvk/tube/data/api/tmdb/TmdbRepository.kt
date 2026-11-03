@@ -5,6 +5,8 @@ import com.ruvk.tube.data.network.NetworkClient
 import com.ruvk.tube.domain.models.CastMember
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
+import com.ruvk.tube.domain.models.TvEpisode
+import com.ruvk.tube.domain.models.TvSeason
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.text.SimpleDateFormat
@@ -108,6 +110,19 @@ class TmdbRepository {
             )
         } ?: emptyList()
 
+        val tvSeasons = dto.seasons
+            ?.filter { (it.episodeCount ?: 0) > 0 }
+            ?.sortedBy { it.seasonNumber }
+            ?.map { s ->
+                TvSeason(
+                    id = s.id,
+                    seasonNumber = s.seasonNumber,
+                    name = s.name?.takeIf { it.isNotBlank() } ?: if (s.seasonNumber == 0) "Спецматериалы" else "${s.seasonNumber} сезон",
+                    episodeCount = s.episodeCount ?: 0,
+                    posterUrl = s.posterPath?.let { "$IMAGE_BASE_POSTER$it" }
+                )
+            } ?: emptyList()
+
         return MediaItem(
             id = dto.id,
             title = dto.name ?: dto.originalName ?: "",
@@ -122,8 +137,25 @@ class TmdbRepository {
             mediaType = MediaType.TV,
             ageRating = ageRating,
             ageRatingDescription = ageDesc,
-            cast = castMembers
+            cast = castMembers,
+            seasons = tvSeasons
         )
+    }
+
+    suspend fun getSeasonEpisodes(tvId: Long, seasonNumber: Int): List<TvEpisode> {
+        val dto = api.getSeasonDetails(tvId, seasonNumber, effectiveApiKey)
+        return dto.episodes?.map { ep ->
+            TvEpisode(
+                id = ep.id,
+                episodeNumber = ep.episodeNumber,
+                seasonNumber = ep.seasonNumber,
+                name = ep.name?.takeIf { it.isNotBlank() } ?: "Серия ${ep.episodeNumber}",
+                overview = ep.overview ?: "",
+                stillUrl = ep.stillPath?.let { "$IMAGE_BASE_BACKDROP$it" },
+                durationMinutes = ep.runtime ?: 0,
+                voteAverage = ep.voteAverage ?: 0.0
+            )
+        } ?: emptyList()
     }
 
     suspend fun search(query: String, page: Int = 1): List<MediaItem> {

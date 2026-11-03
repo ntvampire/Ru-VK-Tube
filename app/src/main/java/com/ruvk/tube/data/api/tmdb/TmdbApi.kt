@@ -61,6 +61,14 @@ interface TmdbApi {
         @Query("append_to_response") appendToResponse: String = "content_ratings,credits"
     ): TmdbTvDetailsDto
 
+    @GET("tv/{tv_id}/season/{season_number}")
+    suspend fun getSeasonDetails(
+        @Path("tv_id") tvId: Long,
+        @Path("season_number") seasonNumber: Int,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "ru-RU"
+    ): TmdbSeasonDetailsDto
+
     @GET("search/multi")
     suspend fun searchMulti(
         @Query("api_key") apiKey: String,

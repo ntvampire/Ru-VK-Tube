@@ -28,7 +28,29 @@ data class MediaItem(
     val watchPositionMs: Long = 0L,
     val watchDurationMs: Long = 0L,
     val lastStreamUrl: String? = null,
-    val cast: List<CastMember> = emptyList()
+    val cast: List<CastMember> = emptyList(),
+    val seasons: List<TvSeason> = emptyList(),
+    val lastSeason: Int = 0,
+    val lastEpisode: Int = 0
+) : Serializable
+
+data class TvSeason(
+    val id: Long,
+    val seasonNumber: Int,
+    val name: String,
+    val episodeCount: Int,
+    val posterUrl: String? = null
+) : Serializable
+
+data class TvEpisode(
+    val id: Long,
+    val episodeNumber: Int,
+    val seasonNumber: Int,
+    val name: String,
+    val overview: String,
+    val stillUrl: String? = null,
+    val durationMinutes: Int = 0,
+    val voteAverage: Double = 0.0
 ) : Serializable
 
 data class CastMember(

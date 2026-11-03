@@ -21,6 +21,8 @@ import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.domain.models.CastMember
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
+import com.ruvk.tube.domain.models.TvEpisode
+import com.ruvk.tube.domain.models.TvSeason
 import com.ruvk.tube.domain.models.VideoSource
 import com.ruvk.tube.player.DeviceCapabilityHelper
 import com.ruvk.tube.player.ExternalPlayerLauncher
@@ -66,6 +68,19 @@ class DetailsActivity : FragmentActivity() {
     private lateinit var filmographyAdapter: NumPosterAdapter
     private var filmographyJob: Job? = null
 
+    private lateinit var seriesSection: LinearLayout
+    private lateinit var seasonsGridView: androidx.leanback.widget.HorizontalGridView
+    private lateinit var episodesGridView: androidx.leanback.widget.HorizontalGridView
+    private lateinit var episodesProgress: ProgressBar
+    private lateinit var seasonAdapter: NumSeasonAdapter
+    private lateinit var episodeAdapter: NumEpisodeAdapter
+    private var loadEpisodesJob: Job? = null
+    private var currentSeasonNumber: Int = 1
+    private var currentEpisodeNumber: Int = 1
+    private var currentEpisodesList = listOf<TvEpisode>()
+    private var savedSeason: Int = 0
+    private var savedEpisode: Int = 0
+
     private lateinit var sourceAdapter: NumSourceAdapter
 
     private var mediaItem: MediaItem? = null
@@ -91,6 +106,14 @@ class DetailsActivity : FragmentActivity() {
         if (!item.lastStreamUrl.isNullOrBlank() && item.watchPositionMs > 5_000L) {
             savedStreamUrl = item.lastStreamUrl
             savedPositionMs = item.watchPositionMs
+            savedSeason = item.lastSeason
+            savedEpisode = item.lastEpisode
+        }
+        if (item.lastSeason > 0) {
+            currentSeasonNumber = item.lastSeason
+        }
+        if (item.lastEpisode > 0) {
+            currentEpisodeNumber = item.lastEpisode
         }
 
         initViews()
@@ -149,10 +172,30 @@ class DetailsActivity : FragmentActivity() {
         filmographyProgress = findViewById(R.id.filmography_progress)
         filmographyGridView = findViewById(R.id.filmography_grid_view)
 
-        // По умолчанию полка источников скрыта до нажатия кнопки "Смотреть" или "Источники"
+        seriesSection = findViewById(R.id.series_section)
+        seasonsGridView = findViewById(R.id.seasons_grid_view)
+        episodesGridView = findViewById(R.id.episodes_grid_view)
+        episodesProgress = findViewById(R.id.episodes_progress)
+
+        // По умолчанию полки скрыты
         sourcesSection.visibility = View.GONE
         actorsSection.visibility = View.GONE
         filmographySection.visibility = View.GONE
+        seriesSection.visibility = View.GONE
+
+        // Настройка полки сезонов (1 ряд)
+        seasonsGridView.setNumRows(1)
+        seasonAdapter = NumSeasonAdapter { season ->
+            loadEpisodes(season.seasonNumber)
+        }
+        seasonsGridView.adapter = seasonAdapter
+
+        // Настройка полки серий (1 ряд)
+        episodesGridView.setNumRows(1)
+        episodeAdapter = NumEpisodeAdapter(defaultBackdropUrl = mediaItem?.backdropUrl) { episode ->
+            searchEpisodeSourcesAndFocus(episode)
+        }
+        episodesGridView.adapter = episodeAdapter
 
         // Настройка полки источников (1 ряд)
         sourcesGridView.setNumRows(1)
@@ -182,7 +225,11 @@ class DetailsActivity : FragmentActivity() {
         filmographyGridView.adapter = filmographyAdapter
 
         if (!savedStreamUrl.isNullOrBlank() && savedPositionMs > 5_000L) {
-            btnWatch.text = "(${formatTime(savedPositionMs)})"
+            btnWatch.text = if (mediaItem?.mediaType == MediaType.TV && savedSeason > 0 && savedEpisode > 0) {
+                "(S${savedSeason}E${savedEpisode} ${formatTime(savedPositionMs)})"
+            } else {
+                "(${formatTime(savedPositionMs)})"
+            }
             btnSources.visibility = View.VISIBLE
         } else {
             btnWatch.text = ""
@@ -202,11 +249,13 @@ class DetailsActivity : FragmentActivity() {
 
     private fun updateFocusNavigation() {
         val hasSourcesBtn = btnSources.visibility == View.VISIBLE
+        val isSeriesShown = seriesSection.visibility == View.VISIBLE
         val isSourcesShown = sourcesSection.visibility == View.VISIBLE
         val isActorsShown = actorsSection.visibility == View.VISIBLE
         val isFilmographyShown = filmographySection.visibility == View.VISIBLE
 
         val firstBelowId = when {
+            isSeriesShown -> R.id.seasons_grid_view
             isSourcesShown -> R.id.sources_grid_view
             isActorsShown -> R.id.actors_grid_view
             isFilmographyShown -> R.id.filmography_grid_view
@@ -227,13 +276,39 @@ class DetailsActivity : FragmentActivity() {
         btnFavorite.nextFocusLeftId = R.id.btn_trailer
         btnFavorite.nextFocusDownId = firstBelowId
 
-        sourcesGridView.nextFocusUpId = R.id.btn_watch
-        sourcesGridView.nextFocusDownId = if (isActorsShown) R.id.actors_grid_view else if (isFilmographyShown) R.id.filmography_grid_view else View.NO_ID
+        // Навигация внутри блока сезонов и серий
+        seasonsGridView.nextFocusUpId = R.id.btn_watch
+        seasonsGridView.nextFocusDownId = R.id.episodes_grid_view
 
-        actorsGridView.nextFocusUpId = if (isSourcesShown) R.id.sources_grid_view else R.id.btn_watch
+        val belowEpisodesId = when {
+            isSourcesShown -> R.id.sources_grid_view
+            isActorsShown -> R.id.actors_grid_view
+            isFilmographyShown -> R.id.filmography_grid_view
+            else -> View.NO_ID
+        }
+        episodesGridView.nextFocusUpId = R.id.seasons_grid_view
+        episodesGridView.nextFocusDownId = belowEpisodesId
+
+        sourcesGridView.nextFocusUpId = if (isSeriesShown) R.id.episodes_grid_view else R.id.btn_watch
+        sourcesGridView.nextFocusDownId = when {
+            isActorsShown -> R.id.actors_grid_view
+            isFilmographyShown -> R.id.filmography_grid_view
+            else -> View.NO_ID
+        }
+
+        actorsGridView.nextFocusUpId = when {
+            isSourcesShown -> R.id.sources_grid_view
+            isSeriesShown -> R.id.episodes_grid_view
+            else -> R.id.btn_watch
+        }
         actorsGridView.nextFocusDownId = if (isFilmographyShown) R.id.filmography_grid_view else View.NO_ID
 
-        filmographyGridView.nextFocusUpId = if (isActorsShown) R.id.actors_grid_view else if (isSourcesShown) R.id.sources_grid_view else R.id.btn_watch
+        filmographyGridView.nextFocusUpId = when {
+            isActorsShown -> R.id.actors_grid_view
+            isSourcesShown -> R.id.sources_grid_view
+            isSeriesShown -> R.id.episodes_grid_view
+            else -> R.id.btn_watch
+        }
     }
 
     private fun setupListeners() {
@@ -246,7 +321,22 @@ class DetailsActivity : FragmentActivity() {
                 return@setOnClickListener
             }
 
-            // Стандартное поведение (если сохраненного потока нет):
+            // Для сериалов: если серии загружены, переводим фокус на выбор серий
+            if (item.mediaType == MediaType.TV && seriesSection.visibility == View.VISIBLE) {
+                if (currentEpisodesList.isNotEmpty()) {
+                    episodesGridView.post {
+                        episodesGridView.setSelectedPosition(0)
+                        episodesGridView.requestFocus()
+                    }
+                } else {
+                    seasonsGridView.post {
+                        seasonsGridView.requestFocus()
+                    }
+                }
+                return@setOnClickListener
+            }
+
+            // Стандартное поведение для фильмов:
             if (sourcesList.isNotEmpty()) {
                 sourcesSection.visibility = View.VISIBLE
                 sourcesGridView.visibility = View.VISIBLE
@@ -278,6 +368,9 @@ class DetailsActivity : FragmentActivity() {
                 }
             } else if (isSearchingSources) {
                 Toast.makeText(this, "Идет поиск видео...", Toast.LENGTH_SHORT).show()
+            } else if (item.mediaType == MediaType.TV && currentEpisodesList.isNotEmpty()) {
+                val ep = currentEpisodesList.firstOrNull { it.episodeNumber == currentEpisodeNumber } ?: currentEpisodesList.first()
+                searchEpisodeSourcesAndFocus(ep)
             } else {
                 searchSourcesAndFocus(item)
             }
@@ -349,14 +442,116 @@ class DetailsActivity : FragmentActivity() {
 
         overviewText.text = if (item.overview.isNotBlank()) item.overview else "Описание сюжета отсутствует"
 
+        // Сериалы: показ блока сезонов и серий
+        if (item.mediaType == MediaType.TV) {
+            seriesSection.visibility = View.VISIBLE
+            episodeAdapter.defaultBackdropUrl = item.backdropUrl
+            if (item.seasons.isNotEmpty()) {
+                bindSeasons(item.seasons)
+            }
+        } else {
+            seriesSection.visibility = View.GONE
+        }
+
         // Привязываем актеров если они уже есть в объекте
         if (item.cast.isNotEmpty()) {
             bindCast(item.cast)
         }
 
-        // Фоновая дозагрузка деталей TMDB (актеры, возрастной рейтинг, хронометраж)
-        if (item.cast.isEmpty() || item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0) {
+        // Фоновая дозагрузка деталей TMDB (актеры, сезоны, возрастной рейтинг, хронометраж)
+        if (item.cast.isEmpty() || item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0 || (item.mediaType == MediaType.TV && item.seasons.isEmpty())) {
             fetchExtraDetails(item)
+        }
+    }
+
+    private fun bindSeasons(seasons: List<TvSeason>) {
+        if (seasons.isEmpty()) return
+        val targetSeason = if (savedSeason > 0 && seasons.any { it.seasonNumber == savedSeason }) {
+            savedSeason
+        } else {
+            seasons.firstOrNull { it.seasonNumber > 0 }?.seasonNumber ?: seasons.first().seasonNumber
+        }
+        seasonAdapter.submitList(seasons, initialSelectedSeason = targetSeason)
+        loadEpisodes(targetSeason)
+        updateFocusNavigation()
+    }
+
+    private fun loadEpisodes(seasonNumber: Int) {
+        val item = mediaItem ?: return
+        currentSeasonNumber = seasonNumber
+        episodesProgress.visibility = View.VISIBLE
+
+        loadEpisodesJob?.cancel()
+        loadEpisodesJob = lifecycleScope.launch {
+            try {
+                val episodes = withContext(Dispatchers.IO) {
+                    RuVkTubeApp.instance.tmdbRepository.getSeasonEpisodes(item.id, seasonNumber)
+                }
+                episodesProgress.visibility = View.GONE
+                if (episodes.isNotEmpty()) {
+                    currentEpisodesList = episodes
+                    episodeAdapter.submitList(episodes)
+                    episodesGridView.visibility = View.VISIBLE
+                } else {
+                    episodesGridView.visibility = View.GONE
+                }
+                updateFocusNavigation()
+            } catch (e: Exception) {
+                episodesProgress.visibility = View.GONE
+                episodesGridView.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun searchEpisodeSourcesAndFocus(episode: TvEpisode) {
+        val item = mediaItem ?: return
+        currentSeasonNumber = episode.seasonNumber
+        currentEpisodeNumber = episode.episodeNumber
+
+        isSearchingSources = true
+        sourcesSection.visibility = View.VISIBLE
+        sourcesHeader.visibility = View.VISIBLE
+        sourcesHeader.text = "Сезон ${episode.seasonNumber}, Серия ${episode.episodeNumber}: Источники"
+        sourcesFrame.visibility = View.VISIBLE
+        sourcesProgressLayout.visibility = View.VISIBLE
+        sourcesEmptyText.visibility = View.GONE
+        sourcesGridView.visibility = View.GONE
+        updateFocusNavigation()
+
+        searchSourcesJob?.cancel()
+        searchSourcesJob = lifecycleScope.launch {
+            val maxRes = DeviceCapabilityHelper.getMaxDisplayHeight(this@DetailsActivity)
+            val sources = RuVkTubeApp.instance.searchCoordinator.findEpisodeSources(
+                title = item.title,
+                seasonNumber = episode.seasonNumber,
+                episodeNumber = episode.episodeNumber,
+                runtimeMinutes = if (episode.durationMinutes > 0) episode.durationMinutes else item.runtimeMinutes,
+                originalTitle = item.originalTitle,
+                maxSupportedHeight = maxRes
+            )
+
+            isSearchingSources = false
+            sourcesProgressLayout.visibility = View.GONE
+            sourcesList = sources
+
+            if (sources.isNotEmpty()) {
+                sourcesEmptyText.visibility = View.GONE
+                sourcesGridView.visibility = View.VISIBLE
+                sourcesHeader.text = "Сезон ${episode.seasonNumber}, Серия ${episode.episodeNumber}: Источники (${sources.size})"
+                sourceAdapter.submitList(sources)
+                updateFocusNavigation()
+
+                sourcesGridView.post {
+                    sourcesGridView.setSelectedPosition(0)
+                    sourcesGridView.requestFocus()
+                }
+            } else {
+                sourcesGridView.visibility = View.GONE
+                sourcesEmptyText.visibility = View.VISIBLE
+                sourcesHeader.text = "Сезон ${episode.seasonNumber}, Серия ${episode.episodeNumber}: Источники"
+                updateFocusNavigation()
+                Toast.makeText(this@DetailsActivity, getString(R.string.no_sources_found), Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -392,6 +587,9 @@ class DetailsActivity : FragmentActivity() {
                 }
                 if (detailed.cast.isNotEmpty()) {
                     bindCast(detailed.cast)
+                }
+                if (detailed.mediaType == MediaType.TV && detailed.seasons.isNotEmpty()) {
+                    bindSeasons(detailed.seasons)
                 }
             } catch (e: Exception) {
                 // Игнорируем ошибки подгрузки
@@ -477,18 +675,25 @@ class DetailsActivity : FragmentActivity() {
 
     private fun startPlayback(source: VideoSource) {
         val item = mediaItem ?: return
+        val isTv = item.mediaType == MediaType.TV
+        val playTitle = if (isTv && currentSeasonNumber > 0 && currentEpisodeNumber > 0) {
+            "${item.title} (S${currentSeasonNumber}E${currentEpisodeNumber} - ${source.quality})"
+        } else {
+            "${item.title} (${source.quality})"
+        }
+
         if (AppPreferences.isExternalPlayer && !source.isTrailer) {
             ExternalPlayerLauncher.launch(
                 context = this,
                 streamUrl = source.streamUrl,
-                title = "${item.title} (${source.quality})",
+                title = playTitle,
                 positionMs = savedPositionMs
             )
             return
         }
         val intent = Intent(this, InternalPlayerActivity::class.java).apply {
             putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, source.streamUrl)
-            putExtra(InternalPlayerActivity.EXTRA_TITLE, "${item.title} (${source.quality})")
+            putExtra(InternalPlayerActivity.EXTRA_TITLE, playTitle)
             putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
             putExtra(InternalPlayerActivity.EXTRA_QUALITY, source.quality)
             putExtra(InternalPlayerActivity.EXTRA_START_POSITION_MS, savedPositionMs)
@@ -500,23 +705,34 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_RATING, item.voteAverage)
             putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
             putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
+            if (isTv) {
+                putExtra(InternalPlayerActivity.EXTRA_SEASON, currentSeasonNumber)
+                putExtra(InternalPlayerActivity.EXTRA_EPISODE, currentEpisodeNumber)
+            }
         }
         startActivity(intent)
     }
 
     private fun playSavedStream(streamUrl: String, item: MediaItem, startPosMs: Long) {
+        val isTv = item.mediaType == MediaType.TV
+        val playTitle = if (isTv && savedSeason > 0 && savedEpisode > 0) {
+            "${item.title} (S${savedSeason}E${savedEpisode})"
+        } else {
+            item.title
+        }
+
         if (AppPreferences.isExternalPlayer) {
             ExternalPlayerLauncher.launch(
                 context = this,
                 streamUrl = streamUrl,
-                title = item.title,
+                title = playTitle,
                 positionMs = startPosMs
             )
             return
         }
         val intent = Intent(this, InternalPlayerActivity::class.java).apply {
             putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, streamUrl)
-            putExtra(InternalPlayerActivity.EXTRA_TITLE, item.title)
+            putExtra(InternalPlayerActivity.EXTRA_TITLE, playTitle)
             putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
             putExtra(InternalPlayerActivity.EXTRA_START_POSITION_MS, startPosMs)
             putExtra(InternalPlayerActivity.EXTRA_IS_TRAILER, false)
@@ -527,6 +743,10 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_RATING, item.voteAverage)
             putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
             putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
+            if (isTv) {
+                putExtra(InternalPlayerActivity.EXTRA_SEASON, savedSeason)
+                putExtra(InternalPlayerActivity.EXTRA_EPISODE, savedEpisode)
+            }
         }
         startActivity(intent)
     }
@@ -539,11 +759,19 @@ class DetailsActivity : FragmentActivity() {
             if (history != null && history.lastStreamUrl.isNotBlank() && history.positionMs > 5_000L) {
                 savedPositionMs = history.positionMs
                 savedStreamUrl = history.lastStreamUrl
-                btnWatch.text = "(${formatTime(savedPositionMs)})"
+                savedSeason = history.season
+                savedEpisode = history.episode
+                btnWatch.text = if (mediaItem?.mediaType == MediaType.TV && savedSeason > 0 && savedEpisode > 0) {
+                    "(S${savedSeason}E${savedEpisode} ${formatTime(savedPositionMs)})"
+                } else {
+                    "(${formatTime(savedPositionMs)})"
+                }
                 btnSources.visibility = View.VISIBLE
             } else {
                 savedPositionMs = 0L
                 savedStreamUrl = null
+                savedSeason = 0
+                savedEpisode = 0
                 btnWatch.text = ""
                 btnSources.visibility = View.GONE
             }
@@ -649,7 +877,29 @@ class DetailsActivity : FragmentActivity() {
             actorsGridView.requestFocus()
             return
         }
-        if (current != null && (isViewDescendant(current, sourcesFrame) || isViewDescendant(current, actorsSection))) {
+        if (current != null && isViewDescendant(current, actorsSection)) {
+            if (sourcesSection.visibility == View.VISIBLE) {
+                sourcesGridView.requestFocus()
+            } else if (seriesSection.visibility == View.VISIBLE) {
+                episodesGridView.requestFocus()
+            } else {
+                btnWatch.requestFocus()
+            }
+            return
+        }
+        if (current != null && isViewDescendant(current, sourcesFrame)) {
+            if (seriesSection.visibility == View.VISIBLE) {
+                episodesGridView.requestFocus()
+            } else {
+                btnWatch.requestFocus()
+            }
+            return
+        }
+        if (current != null && isViewDescendant(current, episodesGridView)) {
+            seasonsGridView.requestFocus()
+            return
+        }
+        if (current != null && isViewDescendant(current, seasonsGridView)) {
             btnWatch.requestFocus()
             return
         }

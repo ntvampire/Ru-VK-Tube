@@ -274,6 +274,73 @@
                 </LinearLayout>
             </LinearLayout>
 
+            <!-- 1.5. Блок серий и сезонов сериала (скрыт для фильмов) -->
+            <LinearLayout
+                android:id="@+id/series_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="20dp"
+                android:visibility="gone">
+
+                <!-- Выбор сезона -->
+                <TextView
+                    android:id="@+id/seasons_header"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="56dp"
+                    android:layout_marginBottom="8dp"
+                    android:text="Сезоны"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/seasons_grid_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:clipToPadding="false"
+                    android:paddingStart="56dp"
+                    android:paddingEnd="56dp" />
+
+                <!-- Выбор серии -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginStart="56dp"
+                    android:layout_marginEnd="56dp"
+                    android:layout_marginTop="14dp"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:id="@+id/episodes_header"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Серии"
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <ProgressBar
+                        android:id="@+id/episodes_progress"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_marginStart="12dp"
+                        android:indeterminateTint="@color/brand_primary"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <androidx.leanback.widget.HorizontalGridView
+                    android:id="@+id/episodes_grid_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="145dp"
+                    android:clipToPadding="false"
+                    android:paddingStart="56dp"
+                    android:paddingEnd="56dp" />
+            </LinearLayout>
+
             <!-- 2. Блок источников видео (скрыт по умолчанию, показывается при нажатии "Смотреть") -->
             <LinearLayout
                 android:id="@+id/sources_section"

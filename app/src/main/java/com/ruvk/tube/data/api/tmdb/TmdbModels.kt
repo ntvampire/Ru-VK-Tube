@@ -54,7 +54,39 @@ data class TmdbTvDetailsDto(
     @SerializedName("number_of_seasons") val numberOfSeasons: Int?,
     @SerializedName("number_of_episodes") val numberOfEpisodes: Int?,
     @SerializedName("content_ratings") val contentRatings: TmdbContentRatingsContainer?,
-    @SerializedName("credits") val credits: TmdbCreditsDto? = null
+    @SerializedName("credits") val credits: TmdbCreditsDto? = null,
+    @SerializedName("seasons") val seasons: List<TmdbSeasonDto>? = null
+)
+
+data class TmdbSeasonDto(
+    @SerializedName("id") val id: Long,
+    @SerializedName("season_number") val seasonNumber: Int,
+    @SerializedName("name") val name: String?,
+    @SerializedName("overview") val overview: String? = null,
+    @SerializedName("episode_count") val episodeCount: Int?,
+    @SerializedName("poster_path") val posterPath: String? = null,
+    @SerializedName("air_date") val airDate: String? = null
+)
+
+data class TmdbSeasonDetailsDto(
+    @SerializedName("id") val id: Long,
+    @SerializedName("season_number") val seasonNumber: Int,
+    @SerializedName("name") val name: String?,
+    @SerializedName("overview") val overview: String? = null,
+    @SerializedName("poster_path") val posterPath: String? = null,
+    @SerializedName("episodes") val episodes: List<TmdbEpisodeDto>? = null
+)
+
+data class TmdbEpisodeDto(
+    @SerializedName("id") val id: Long,
+    @SerializedName("episode_number") val episodeNumber: Int,
+    @SerializedName("season_number") val seasonNumber: Int,
+    @SerializedName("name") val name: String?,
+    @SerializedName("overview") val overview: String? = null,
+    @SerializedName("still_path") val stillPath: String? = null,
+    @SerializedName("runtime") val runtime: Int? = null,
+    @SerializedName("vote_average") val voteAverage: Double? = null,
+    @SerializedName("air_date") val airDate: String? = null
 )
 
 data class TmdbCreditsDto(
