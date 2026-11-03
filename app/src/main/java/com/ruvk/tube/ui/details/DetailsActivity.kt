@@ -39,6 +39,7 @@ class DetailsActivity : FragmentActivity() {
     private lateinit var overviewText: TextView
 
     private lateinit var btnWatch: TextView
+    private lateinit var btnSources: TextView
     private lateinit var btnTrailer: TextView
     private lateinit var btnFavorite: TextView
 
@@ -53,6 +54,7 @@ class DetailsActivity : FragmentActivity() {
     private var mediaItem: MediaItem? = null
     private var isFavorite = false
     private var savedPositionMs: Long = 0L
+    private var savedStreamUrl: String? = null
     private var isSearchingSources = false
     private var sourcesList = listOf<VideoSource>()
     private var searchSourcesJob: Job? = null
@@ -68,6 +70,11 @@ class DetailsActivity : FragmentActivity() {
             return
         }
         mediaItem = item
+
+        if (!item.lastStreamUrl.isNullOrBlank() && item.watchPositionMs > 5_000L) {
+            savedStreamUrl = item.lastStreamUrl
+            savedPositionMs = item.watchPositionMs
+        }
 
         initViews()
         setupListeners()
@@ -93,6 +100,7 @@ class DetailsActivity : FragmentActivity() {
         overviewText = findViewById(R.id.details_overview)
 
         btnWatch = findViewById(R.id.btn_watch)
+        btnSources = findViewById(R.id.btn_sources)
         btnTrailer = findViewById(R.id.btn_trailer)
         btnFavorite = findViewById(R.id.btn_favorite)
 
@@ -102,7 +110,7 @@ class DetailsActivity : FragmentActivity() {
         sourcesProgressLayout = findViewById(R.id.sources_progress_layout)
         sourcesEmptyText = findViewById(R.id.sources_empty_text)
 
-        // По умолчанию полка источников скрыта до нажатия кнопки "Смотреть"
+        // По умолчанию полка источников скрыта до нажатия кнопки "Смотреть" или "Источники"
         sourcesHeader.visibility = View.GONE
         sourcesFrame.visibility = View.GONE
 
@@ -113,11 +121,32 @@ class DetailsActivity : FragmentActivity() {
         }
         sourcesGridView.adapter = sourceAdapter
 
-        // Связка навигации пульта (D-Pad)
-        btnWatch.nextFocusRightId = R.id.btn_trailer
+        if (!savedStreamUrl.isNullOrBlank() && savedPositionMs > 5_000L) {
+            btnWatch.text = "Продолжить (${formatTime(savedPositionMs)})"
+            btnSources.visibility = View.VISIBLE
+        } else {
+            btnSources.visibility = View.GONE
+        }
+
+        updateFocusNavigation()
+
+        // Фокус по умолчанию на кнопке "Смотреть" / "Продолжить"
+        btnWatch.post {
+            btnWatch.requestFocus()
+        }
+    }
+
+    private fun updateFocusNavigation() {
+        val hasSourcesBtn = btnSources.visibility == View.VISIBLE
+
+        btnWatch.nextFocusRightId = if (hasSourcesBtn) R.id.btn_sources else R.id.btn_trailer
         btnWatch.nextFocusDownId = R.id.sources_grid_view
 
-        btnTrailer.nextFocusLeftId = R.id.btn_watch
+        btnSources.nextFocusLeftId = R.id.btn_watch
+        btnSources.nextFocusRightId = R.id.btn_trailer
+        btnSources.nextFocusDownId = R.id.sources_grid_view
+
+        btnTrailer.nextFocusLeftId = if (hasSourcesBtn) R.id.btn_sources else R.id.btn_watch
         btnTrailer.nextFocusRightId = R.id.btn_favorite
         btnTrailer.nextFocusDownId = R.id.sources_grid_view
 
@@ -125,18 +154,40 @@ class DetailsActivity : FragmentActivity() {
         btnFavorite.nextFocusDownId = R.id.sources_grid_view
 
         sourcesGridView.nextFocusUpId = R.id.btn_watch
-
-        // Фокус по умолчанию на кнопке "Смотреть"
-        btnWatch.post {
-            btnWatch.requestFocus()
-        }
     }
 
     private fun setupListeners() {
         btnWatch.setOnClickListener {
             val item = mediaItem ?: return@setOnClickListener
+            val stream = savedStreamUrl
+            if (!stream.isNullOrBlank() && savedPositionMs > 5_000L) {
+                // Автоматический запуск сохраненного потока на том же месте просмотра
+                playSavedStream(stream, item, savedPositionMs)
+                return@setOnClickListener
+            }
+
+            // Стандартное поведение (если сохраненного потока нет):
             if (sourcesList.isNotEmpty()) {
-                // Если источники уже найдены - переводим курсор на первое видео
+                sourcesGridView.visibility = View.VISIBLE
+                sourcesHeader.visibility = View.VISIBLE
+                sourcesFrame.visibility = View.VISIBLE
+                sourcesGridView.post {
+                    sourcesGridView.setSelectedPosition(0)
+                    sourcesGridView.requestFocus()
+                }
+            } else if (isSearchingSources) {
+                Toast.makeText(this, "Идет поиск видео...", Toast.LENGTH_SHORT).show()
+            } else {
+                searchSourcesAndFocus(item)
+            }
+        }
+
+        btnSources.setOnClickListener {
+            val item = mediaItem ?: return@setOnClickListener
+            if (sourcesList.isNotEmpty()) {
+                sourcesGridView.visibility = View.VISIBLE
+                sourcesHeader.visibility = View.VISIBLE
+                sourcesFrame.visibility = View.VISIBLE
                 sourcesGridView.post {
                     sourcesGridView.setSelectedPosition(0)
                     sourcesGridView.requestFocus()
@@ -167,12 +218,8 @@ class DetailsActivity : FragmentActivity() {
             error(R.color.background_dark)
         }
 
-        val cornerRadiusPx = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, 10f, resources.displayMetrics
-        )
         posterImage.load(item.posterUrl) {
             crossfade(300)
-            transformations(RoundedCornersTransformation(cornerRadiusPx))
             placeholder(R.color.surface_card)
             error(R.color.surface_card)
         }
@@ -338,18 +385,41 @@ class DetailsActivity : FragmentActivity() {
         startActivity(intent)
     }
 
+    private fun playSavedStream(streamUrl: String, item: MediaItem, startPosMs: Long) {
+        val intent = Intent(this, InternalPlayerActivity::class.java).apply {
+            putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, streamUrl)
+            putExtra(InternalPlayerActivity.EXTRA_TITLE, item.title)
+            putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
+            putExtra(InternalPlayerActivity.EXTRA_START_POSITION_MS, startPosMs)
+            putExtra(InternalPlayerActivity.EXTRA_IS_TRAILER, false)
+            putExtra(InternalPlayerActivity.EXTRA_POSTER_URL, item.posterUrl)
+            putExtra(InternalPlayerActivity.EXTRA_BACKDROP_URL, item.backdropUrl)
+            putExtra(InternalPlayerActivity.EXTRA_MOVIE_TITLE, item.title)
+            putExtra(InternalPlayerActivity.EXTRA_YEAR, item.year)
+            putExtra(InternalPlayerActivity.EXTRA_RATING, item.voteAverage)
+            putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
+            putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
+        }
+        startActivity(intent)
+    }
+
     private fun checkHistoryPosition(tmdbId: Long) {
         lifecycleScope.launch {
             val history = withContext(Dispatchers.IO) {
                 RuVkTubeApp.instance.database.historyDao().getByTmdbId(tmdbId)
             }
-            if (history != null && history.positionMs > 5_000L) {
+            if (history != null && history.lastStreamUrl.isNotBlank() && history.positionMs > 5_000L) {
                 savedPositionMs = history.positionMs
+                savedStreamUrl = history.lastStreamUrl
                 btnWatch.text = "Продолжить (${formatTime(savedPositionMs)})"
+                btnSources.visibility = View.VISIBLE
             } else {
                 savedPositionMs = 0L
+                savedStreamUrl = null
                 btnWatch.text = "Смотреть"
+                btnSources.visibility = View.GONE
             }
+            updateFocusNavigation()
         }
     }
 

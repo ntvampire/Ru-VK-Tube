@@ -156,15 +156,8 @@ class MainActivity : FragmentActivity() {
         posterGridView.setOnKeyInterceptListener { event ->
             if (event.action == KeyEvent.ACTION_DOWN) {
                 if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && posterGridView.selectedPosition <= 0) {
-                    val targetPos = sideMenuAdapter.selectedCategory.ordinal
-                    val targetHolder = sideMenuRecycler.findViewHolderForAdapterPosition(targetPos)
-                    val targetView = targetHolder?.itemView
-                        ?: sideMenuRecycler.layoutManager?.findViewByPosition(targetPos)
-                        ?: sideMenuRecycler.layoutManager?.findViewByPosition(0)
-
-                    if (targetView != null && targetView.requestFocus()) {
-                        return@setOnKeyInterceptListener true
-                    }
+                    focusSideMenu()
+                    return@setOnKeyInterceptListener true
                 } else if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && sideMenuAdapter.selectedCategory == NumCategory.SEARCH) {
                     if (searchEditText.requestFocus()) {
                         return@setOnKeyInterceptListener true
@@ -210,12 +203,27 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun isViewDescendant(view: View?, parent: View): Boolean {
-        var current: ViewParent? = view?.parent
+        if (view == null) return false
+        if (view == parent) return true
+        var current: ViewParent? = view.parent
         while (current != null) {
             if (current == parent) return true
             current = current.parent
         }
         return false
+    }
+
+    private fun focusSideMenu() {
+        val targetPos = sideMenuAdapter.selectedCategory.ordinal
+        val targetHolder = sideMenuRecycler.findViewHolderForAdapterPosition(targetPos)
+        val targetView = targetHolder?.itemView
+            ?: sideMenuRecycler.layoutManager?.findViewByPosition(targetPos)
+            ?: sideMenuRecycler.layoutManager?.findViewByPosition(0)
+
+        if (targetView != null && targetView.requestFocus()) {
+            return
+        }
+        sideMenuRecycler.requestFocus()
     }
 
     private fun setMenuExpanded(expanded: Boolean) {
@@ -410,7 +418,8 @@ class MainActivity : FragmentActivity() {
                     ageRating = ageRating,
                     mediaType = if (h.mediaType.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE,
                     watchPositionMs = h.positionMs,
-                    watchDurationMs = h.durationMs
+                    watchDurationMs = h.durationMs,
+                    lastStreamUrl = h.lastStreamUrl
                 )
             )
         }
@@ -552,12 +561,27 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onBackPressed() {
-        // Если фокус в боковом меню, кнопка Назад возвращает фокус на ряд постеров
+        // 1. Если фокус уже в боковом меню -> выход из приложения
         if (isViewDescendant(currentFocus, sideMenuContainer)) {
-            posterGridView.requestFocus()
+            finish()
             return
         }
-        super.onBackPressed()
+
+        // 2. Если фокус в строке поиска или контейнере поиска -> фокус в боковое меню
+        val searchContainer = findViewById<View>(R.id.search_container)
+        if (currentFocus == searchEditText || (searchContainer != null && isViewDescendant(currentFocus, searchContainer))) {
+            focusSideMenu()
+            return
+        }
+
+        // 3. Если фокус в ленте постеров и позиция > 0 -> плавная перемотка ленты на 1-ю карточку (позиция 0)
+        if (posterGridView.selectedPosition > 0) {
+            posterGridView.setSelectedPositionSmooth(0)
+            return
+        }
+
+        // 4. Если уже на 1-й карточке ленты (или в любом другом месте экрана) -> переход в боковое меню
+        focusSideMenu()
     }
 
     private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()

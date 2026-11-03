@@ -2,13 +2,16 @@ package com.ruvk.tube
 
 import android.app.Application
 import androidx.room.Room
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import com.ruvk.tube.data.api.rutube.RutubeClient
 import com.ruvk.tube.data.api.tmdb.TmdbRepository
 import com.ruvk.tube.data.api.vk.VkClient
 import com.ruvk.tube.data.db.AppDatabase
+import com.ruvk.tube.data.network.NetworkClient
 import com.ruvk.tube.domain.search.SearchCoordinator
 
-class RuVkTubeApp : Application() {
+class RuVkTubeApp : Application(), ImageLoaderFactory {
 
     lateinit var database: AppDatabase
         private set
@@ -38,6 +41,13 @@ class RuVkTubeApp : Application() {
             rutubeClient = RutubeClient(),
             vkClient = vkClient
         )
+    }
+
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .okHttpClient(NetworkClient.okHttpClient)
+            .crossfade(true)
+            .build()
     }
 
     companion object {

@@ -21,6 +21,24 @@
         android:contentDescription="@string/app_name"
         android:scaleType="centerCrop" />
 
+    <!-- Запасное название фильма если постер еще загружается или отсутствует -->
+    <TextView
+        android:id="@+id/poster_title_fallback"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#D0141414"
+        android:paddingStart="8dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="8dp"
+        android:ellipsize="end"
+        android:maxLines="3"
+        android:textColor="@color/text_primary"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <!-- Оценка фильма в углу постера -->
     <TextView
         android:id="@+id/poster_rating_badge"

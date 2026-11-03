@@ -80,7 +80,11 @@ class TmdbRepository(
     suspend fun search(query: String): List<MediaItem> {
         val response = api.searchMulti(apiKey, query)
         return response.results
-            .filter { it.mediaType == "movie" || it.mediaType == "tv" }
+            .filter {
+                (it.mediaType == "movie" || it.mediaType == "tv") &&
+                        (!it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank())
+            }
+            .sortedByDescending { it.voteCount ?: 0 }
             .map { it.toMediaItem() }
     }
 
@@ -88,14 +92,16 @@ class TmdbRepository(
         val isTv = forceType == MediaType.TV || mediaType == "tv"
         val resolvedTitle = title ?: name ?: originalTitle ?: originalName ?: ""
         val resolvedDate = releaseDate ?: firstAirDate ?: ""
+        val rawPoster = posterPath ?: backdropPath
+        val rawBackdrop = backdropPath ?: posterPath
 
         return MediaItem(
             id = id,
             title = resolvedTitle,
             originalTitle = originalTitle ?: originalName ?: resolvedTitle,
             overview = overview ?: "",
-            posterUrl = posterPath?.let { "$IMAGE_BASE_POSTER$it" },
-            backdropUrl = backdropPath?.let { "$IMAGE_BASE_BACKDROP$it" },
+            posterUrl = rawPoster?.let { "$IMAGE_BASE_POSTER$it" },
+            backdropUrl = rawBackdrop?.let { "$IMAGE_BASE_BACKDROP$it" },
             releaseDate = resolvedDate,
             year = parseYear(resolvedDate),
             voteAverage = voteAverage ?: 0.0,

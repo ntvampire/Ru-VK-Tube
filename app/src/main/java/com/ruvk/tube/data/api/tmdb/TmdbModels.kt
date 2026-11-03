@@ -21,6 +21,8 @@ data class TmdbMovieDto(
     @SerializedName("release_date") val releaseDate: String?,
     @SerializedName("first_air_date") val firstAirDate: String?,
     @SerializedName("vote_average") val voteAverage: Double?,
+    @SerializedName("vote_count") val voteCount: Int? = null,
+    @SerializedName("popularity") val popularity: Double? = null,
     @SerializedName("media_type") val mediaType: String?
 )
 

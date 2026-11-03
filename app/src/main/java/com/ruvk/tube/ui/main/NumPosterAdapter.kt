@@ -1,6 +1,5 @@
 package com.ruvk.tube.ui.main
 
-import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,7 +9,6 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
-import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.domain.models.MediaItem
 
@@ -41,18 +39,27 @@ class NumPosterAdapter(
     inner class PosterViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val cardContainer: FrameLayout = itemView.findViewById(R.id.card_container)
         private val posterImage: ImageView = itemView.findViewById(R.id.poster_image)
+        private val posterTitleFallback: TextView = itemView.findViewById(R.id.poster_title_fallback)
         private val ratingBadge: TextView = itemView.findViewById(R.id.poster_rating_badge)
         private val watchProgressBar: ProgressBar = itemView.findViewById(R.id.poster_watch_progress)
-        private val cornerRadiusPx = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, 10f, itemView.context.resources.displayMetrics
-        )
 
         fun bind(item: MediaItem) {
+            posterTitleFallback.text = item.title
+            val hasPoster = !item.posterUrl.isNullOrBlank()
+            posterTitleFallback.visibility = if (hasPoster) View.GONE else View.VISIBLE
+
             posterImage.load(item.posterUrl) {
                 crossfade(true)
-                transformations(RoundedCornersTransformation(cornerRadiusPx))
                 placeholder(R.color.surface_card)
                 error(R.color.surface_card)
+                listener(
+                    onError = { _, _ ->
+                        posterTitleFallback.visibility = View.VISIBLE
+                    },
+                    onSuccess = { _, _ ->
+                        posterTitleFallback.visibility = View.GONE
+                    }
+                )
             }
 
             if (item.voteAverage > 0) {
