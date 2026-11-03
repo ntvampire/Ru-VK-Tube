@@ -6,14 +6,16 @@ $env:JAVA_HOME = "D:\Projects\AndroidSDK\jdk-17"
 $ADB = "D:\Projects\AndroidSDK\platform-tools\adb.exe"
 $EMU = "D:\Projects\AndroidSDK\emulator\emulator.exe"
 
+$ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { "D:\Projects\Ru-VK-Tube" }
+
 # Поиск свежего релизного APK, иначе debug
-$releaseApk = Get-ChildItem "$PSScriptRoot\app\build\outputs\apk\release\Ru-VK-Tube-*.apk" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$releaseApk = Get-ChildItem "$ScriptDir\app\build\outputs\apk\release\Ru-VK-Tube-*.apk" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($releaseApk) {
     $APK = $releaseApk.FullName
     $PKG = "com.ruvk.tube"
     Write-Host "Выбран релизный APK: $($releaseApk.Name)" -ForegroundColor Cyan
 } else {
-    $APK = "$PSScriptRoot\app\build\outputs\apk\debug\app-debug.apk"
+    $APK = "$ScriptDir\app\build\outputs\apk\debug\app-debug.apk"
     $PKG = "com.ruvk.tube.debug"
     Write-Host "Релизный APK не найден, выбран debug: $APK" -ForegroundColor Yellow
 }
@@ -47,5 +49,6 @@ if (-not $devices) {
 Write-Host "Установка $([System.IO.Path]::GetFileName($APK))..." -ForegroundColor Green
 & $ADB install -r $APK
 
-Write-Host "Запуск Ru-VK-Tube ($PKG)..." -ForegroundColor Green
+Write-Host "Перезапуск Ru-VK-Tube ($PKG)..." -ForegroundColor Green
+& $ADB shell am force-stop $PKG
 & $ADB shell am start -n "$PKG/com.ruvk.tube.ui.main.MainActivity"
