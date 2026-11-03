@@ -1,6 +1,6 @@
 {
-  "versionCode": 8,
-  "versionName": "1.0.7",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.0.7/Ru-VK-Tube-1.0.7.apk",
-  "changelog": "Полка «В главных ролях» в карточке фильма с фото актеров и ролями, корректное переключение пустого Избранного/Истории, плавное смещение контента."
+  "versionCode": 9,
+  "versionName": "1.0.8",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.0.8/RuVK-Hub-1.0.8.apk",
+  "changelog": "Ребрендинг в RuVK Hub, новый широкоформатный баннер Android TV (16:9) с контрастным символом «Двойной Play» и квадратная системная иконка."
 }
