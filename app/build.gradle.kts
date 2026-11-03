@@ -10,12 +10,20 @@ android {
 
     defaultConfig {
         applicationId = "com.ruvk.tube"
-        minSdk = 28
+        minSdk = 21
         targetSdk = 34
         versionCode = 9
         versionName = "1.0.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
     }
 
     buildTypes {
