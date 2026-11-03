@@ -7,7 +7,7 @@ import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.ruvk.tube.BuildConfig
 import com.ruvk.tube.R
@@ -16,7 +16,7 @@ import com.ruvk.tube.data.update.UpdateInfo
 import com.ruvk.tube.data.update.UpdateManager
 import kotlinx.coroutines.launch
 
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : FragmentActivity() {
 
     private lateinit var btnBack: TextView
     private lateinit var cardSettingPlayer: View

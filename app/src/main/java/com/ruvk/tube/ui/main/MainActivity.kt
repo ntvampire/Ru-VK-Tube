@@ -286,7 +286,7 @@ class MainActivity : FragmentActivity() {
                     posterAdapter.getItemAt(position)?.let { updateHeroSpotlight(it) }
 
                     // Бесконечная подгрузка: за 5 карточек до конца списка запрашиваем следующую страницу
-                    if (canLoadMore && !isLoadingNextPage && position >= posterAdapter.itemCount - 5) {
+                    if (canLoadMore && !isLoadingNextPage && posterAdapter.itemCount >= 10 && position >= posterAdapter.itemCount - 5) {
                         loadNextPage()
                     }
                 }
@@ -321,27 +321,41 @@ class MainActivity : FragmentActivity() {
         emptyText.visibility = View.GONE
 
         currentFeedJob = lifecycleScope.launch {
-            val items = when (category) {
-                NumCategory.SEARCH -> emptyList()
-                NumCategory.TRENDING -> RuVkTubeApp.instance.tmdbRepository.getTrending(page = 1)
-                NumCategory.NEW_RELEASES -> RuVkTubeApp.instance.tmdbRepository.getNewDigitalReleases(page = 1)
-                NumCategory.ON_THE_AIR -> RuVkTubeApp.instance.tmdbRepository.getOnTheAirTv(page = 1)
-                NumCategory.MOVIES -> RuVkTubeApp.instance.tmdbRepository.getPopularMovies(page = 1)
-                NumCategory.SERIES -> RuVkTubeApp.instance.tmdbRepository.getPopularTv(page = 1)
-                NumCategory.FAVORITES -> loadFavorites()
-                NumCategory.HISTORY -> loadHistory()
-                NumCategory.SETTINGS -> emptyList()
-            }
+            try {
+                val items = withContext(Dispatchers.IO) {
+                    when (category) {
+                        NumCategory.SEARCH -> emptyList()
+                        NumCategory.TRENDING -> RuVkTubeApp.instance.tmdbRepository.getTrending(page = 1)
+                        NumCategory.NEW_RELEASES -> RuVkTubeApp.instance.tmdbRepository.getNewDigitalReleases(page = 1)
+                        NumCategory.ON_THE_AIR -> RuVkTubeApp.instance.tmdbRepository.getOnTheAirTv(page = 1)
+                        NumCategory.MOVIES -> RuVkTubeApp.instance.tmdbRepository.getPopularMovies(page = 1)
+                        NumCategory.SERIES -> RuVkTubeApp.instance.tmdbRepository.getPopularTv(page = 1)
+                        NumCategory.FAVORITES -> loadFavorites()
+                        NumCategory.HISTORY -> loadHistory()
+                        NumCategory.SETTINGS -> emptyList()
+                    }
+                }
 
-            loadingProgress.visibility = View.GONE
-            if (items.isNotEmpty()) {
-                emptyText.visibility = View.GONE
-                posterAdapter.submitList(items)
-                posterGridView.scrollToPosition(0)
-                posterGridView.post { posterGridView.requestFocus() }
-                updateHeroSpotlight(items.first())
-            } else {
-                emptyText.text = getString(R.string.no_sources_found)
+                loadingProgress.visibility = View.GONE
+                if (items.isNotEmpty()) {
+                    emptyText.visibility = View.GONE
+                    posterAdapter.submitList(items)
+                    posterGridView.scrollToPosition(0)
+                    posterGridView.post { posterGridView.requestFocus() }
+                    updateHeroSpotlight(items.first())
+                } else {
+                    emptyText.text = when (category) {
+                        NumCategory.FAVORITES -> "В избранном пока ничего нет"
+                        NumCategory.HISTORY -> "История просмотров пуста"
+                        else -> getString(R.string.no_sources_found)
+                    }
+                    emptyText.visibility = View.VISIBLE
+                    posterAdapter.submitList(emptyList())
+                    clearHeroSpotlight()
+                }
+            } catch (e: Exception) {
+                loadingProgress.visibility = View.GONE
+                emptyText.text = "Не удалось загрузить каталог.\nПроверьте подключение к сети или ключ TMDB в Настройках."
                 emptyText.visibility = View.VISIBLE
                 posterAdapter.submitList(emptyList())
                 clearHeroSpotlight()
@@ -631,16 +645,21 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showUpdateDialog(update: UpdateInfo) {
-        val changelog = update.changelog ?: "Улучшения стабильности и новые возможности."
-        AlertDialog.Builder(this)
-            .setTitle("Доступна новая версия v${update.versionName}")
-            .setMessage("Что нового:\n$changelog\n\nПерейти в Настройки для обновления?")
-            .setPositiveButton("Обновить") { _, _ ->
-                val intent = Intent(this, SettingsActivity::class.java)
-                startActivity(intent)
-            }
-            .setNegativeButton("Позже", null)
-            .show()
+        if (isFinishing || isDestroyed) return
+        try {
+            val changelog = update.changelog ?: "Улучшения стабильности и новые возможности."
+            AlertDialog.Builder(this)
+                .setTitle("Доступна новая версия v${update.versionName}")
+                .setMessage("Что нового:\n$changelog\n\nПерейти в Настройки для обновления?")
+                .setPositiveButton("Обновить") { _, _ ->
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    startActivity(intent)
+                }
+                .setNegativeButton("Позже", null)
+                .show()
+        } catch (e: Exception) {
+            // Защита от WindowManager$BadTokenException при сворачивании активности
+        }
     }
 
     private fun clearHeroSpotlight() {

@@ -48,12 +48,29 @@ object UpdateManager {
             update = fetchFromGithubApi()
         }
 
-        if (update != null && update.versionCode > BuildConfig.VERSION_CODE) {
-            Log.d(TAG, "Найдено обновление: v${update.versionName} (код ${update.versionCode}), текущая: ${BuildConfig.VERSION_CODE}")
+        if (update != null && isVersionNewer(update.versionName, BuildConfig.VERSION_NAME)) {
+            Log.d(TAG, "Найдено обновление: v${update.versionName} (текущая: v${BuildConfig.VERSION_NAME})")
             update
         } else {
             null
         }
+    }
+
+    /**
+     * Сравнивает две семантические версии (например, "1.0.7" и "1.0.6").
+     * Возвращает true, если remoteVer > currentVer.
+     */
+    fun isVersionNewer(remoteVer: String, currentVer: String): Boolean {
+        val rParts = remoteVer.removePrefix("v").trim().split(".").mapNotNull { it.toIntOrNull() }
+        val cParts = currentVer.removePrefix("v").trim().split(".").mapNotNull { it.toIntOrNull() }
+        val maxLen = maxOf(rParts.size, cParts.size)
+        for (i in 0 until maxLen) {
+            val r = rParts.getOrElse(i) { 0 }
+            val c = cParts.getOrElse(i) { 0 }
+            if (r > c) return true
+            if (r < c) return false
+        }
+        return false
     }
 
     private fun fetchFromGithubIo(): UpdateInfo? {
