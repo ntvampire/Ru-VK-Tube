@@ -1,8 +1,10 @@
 package com.ruvk.tube.ui.details
 
 import android.content.Intent
+import android.graphics.Outline
 import android.os.Bundle
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -11,6 +13,7 @@ import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import coil.load
+import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
 import com.ruvk.tube.data.db.FavoriteEntity
@@ -91,6 +94,19 @@ class DetailsActivity : FragmentActivity() {
     private fun initViews() {
         heroBackdrop = findViewById(R.id.details_hero_backdrop)
         posterImage = findViewById(R.id.details_poster)
+
+        val posterCard = findViewById<View>(R.id.poster_card)
+        val radiusPx = resources.displayMetrics.density * 10f
+        val roundOutline = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, radiusPx)
+            }
+        }
+        posterCard?.outlineProvider = roundOutline
+        posterCard?.clipToOutline = true
+        posterImage.outlineProvider = roundOutline
+        posterImage.clipToOutline = true
+
         titleText = findViewById(R.id.details_title)
         originalTitleText = findViewById(R.id.details_original_title)
         badgeAge = findViewById(R.id.badge_age)
@@ -218,10 +234,12 @@ class DetailsActivity : FragmentActivity() {
             error(R.color.background_dark)
         }
 
+        val radiusPx = resources.displayMetrics.density * 10f
         posterImage.load(item.posterUrl) {
             crossfade(300)
             placeholder(R.color.surface_card)
             error(R.color.surface_card)
+            transformations(RoundedCornersTransformation(radiusPx))
         }
 
         titleText.text = item.title

@@ -10,7 +10,8 @@
     android:clickable="true"
     android:focusable="true"
     android:focusableInTouchMode="true"
-    android:background="@drawable/bg_poster_selector"
+    android:background="@drawable/bg_poster_card"
+    android:foreground="@drawable/bg_poster_selector"
     android:outlineProvider="background"
     android:clipToOutline="true">
 
@@ -27,7 +28,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:background="#D0141414"
+        android:background="@drawable/bg_poster_fallback"
         android:paddingStart="8dp"
         android:paddingTop="6dp"
         android:paddingEnd="8dp"
