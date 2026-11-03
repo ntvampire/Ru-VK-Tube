@@ -14,7 +14,9 @@ import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.domain.models.CastMember
 
-class NumCastAdapter : RecyclerView.Adapter<NumCastAdapter.CastViewHolder>() {
+class NumCastAdapter(
+    private val onCastMemberClick: (CastMember) -> Unit = {}
+) : RecyclerView.Adapter<NumCastAdapter.CastViewHolder>() {
 
     private val items = mutableListOf<CastMember>()
 
@@ -59,6 +61,13 @@ class NumCastAdapter : RecyclerView.Adapter<NumCastAdapter.CastViewHolder>() {
                     container.animate().scaleX(1.06f).scaleY(1.06f).setDuration(150).start()
                 } else {
                     container.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
+                }
+            }
+
+            container.setOnClickListener {
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION && pos < items.size) {
+                    onCastMemberClick(items[pos])
                 }
             }
         }

@@ -137,6 +137,23 @@ class TmdbRepository {
             .map { it.toMediaItem() }
     }
 
+    suspend fun getPersonFilmography(personId: Long): List<MediaItem> {
+        val credits = api.getPersonCredits(personId, effectiveApiKey)
+        val rawList = credits.cast ?: emptyList()
+        return rawList
+            .filter {
+                (it.mediaType == "movie" || it.mediaType == "tv" || it.mediaType == null) &&
+                        (!it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank())
+            }
+            .distinctBy { it.id }
+            .sortedWith(
+                compareByDescending<TmdbMovieDto> { dto ->
+                    dto.releaseDate ?: dto.firstAirDate ?: ""
+                }.thenByDescending { it.voteAverage ?: 0.0 }
+            )
+            .map { it.toMediaItem() }
+    }
+
     private fun TmdbMovieDto.toMediaItem(forceType: MediaType? = null): MediaItem {
         val isTv = forceType == MediaType.TV || mediaType == "tv"
         val resolvedTitle = title ?: name ?: originalTitle ?: originalName ?: ""

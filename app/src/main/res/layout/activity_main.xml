@@ -287,29 +287,22 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <!-- Логотип / Иконка приложения -->
-        <ImageView
-            android:id="@+id/menu_app_logo"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_gravity="center_horizontal"
-            android:contentDescription="@string/app_name"
-            android:src="@drawable/ic_movies"
-            app:tint="@color/brand_primary" />
-
+        <!-- Заголовок приложения в боковом меню (вровень с пунктами меню) -->
         <TextView
             android:id="@+id/menu_app_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="10dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="14dp"
             android:alpha="0"
-            android:gravity="center"
+            android:gravity="start|center_vertical"
             android:singleLine="true"
-            android:text="Ru-VK Tube"
             android:textColor="@color/text_primary"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="20sp"
+            android:textStyle="bold"
+            tools:text="RuVK Hub" />
 
         <!-- Вертикальный список пунктов меню -->
         <androidx.recyclerview.widget.RecyclerView

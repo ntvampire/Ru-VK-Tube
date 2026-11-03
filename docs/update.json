@@ -1,6 +1,6 @@
 {
-  "versionCode": 9,
-  "versionName": "1.0.8",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.0.8/RuVK-Hub-1.0.8.apk",
-  "changelog": "Ребрендинг в RuVK Hub, новый широкоформатный баннер Android TV (16:9) с контрастным символом «Двойной Play» и квадратная системная иконка."
+  "versionCode": 10,
+  "versionName": "1.0.9",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.0.9/RuVK-Hub-1.0.9.apk",
+  "changelog": "Стильный двухцветный заголовок меню RuVK Hub, компактные кнопки-иконки в карточке фильма, фильмография актеров из TMDB по клику."
 }

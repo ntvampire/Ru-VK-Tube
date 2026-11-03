@@ -61,6 +61,10 @@ data class TmdbCreditsDto(
     @SerializedName("cast") val cast: List<TmdbCastItemDto>? = null
 )
 
+data class TmdbPersonCreditsDto(
+    @SerializedName("cast") val cast: List<TmdbMovieDto>? = null
+)
+
 data class TmdbCastItemDto(
     @SerializedName("id") val id: Long,
     @SerializedName("name") val name: String?,

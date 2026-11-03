@@ -101,6 +101,10 @@ class MainActivity : FragmentActivity() {
 
         sideMenuContainer = findViewById(R.id.side_menu_container)
         menuAppTitle = findViewById(R.id.menu_app_title)
+        menuAppTitle.text = androidx.core.text.HtmlCompat.fromHtml(
+            "<font color=\"#0A82FF\">RuVK</font> <font color=\"#FF3C4B\">Hub</font>",
+            androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY
+        )
         sideMenuRecycler = findViewById(R.id.side_menu_recycler)
 
         heroTitle = findViewById(R.id.hero_title)

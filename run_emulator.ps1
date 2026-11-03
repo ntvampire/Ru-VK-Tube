@@ -8,8 +8,8 @@ $EMU = "D:\Projects\AndroidSDK\emulator\emulator.exe"
 
 $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { "D:\Projects\Ru-VK-Tube" }
 
-# Поиск свежего релизного APK, иначе debug
-$releaseApk = Get-ChildItem "$ScriptDir\app\build\outputs\apk\release\Ru-VK-Tube-*.apk" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+# Поиск свежего релизного APK (*.apk в release), иначе debug
+$releaseApk = Get-ChildItem "$ScriptDir\app\build\outputs\apk\release\*.apk" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($releaseApk) {
     $APK = $releaseApk.FullName
     $PKG = "com.ruvk.tube"
@@ -20,17 +20,19 @@ if ($releaseApk) {
     Write-Host "Релизный APK не найден, выбран debug: $APK" -ForegroundColor Yellow
 }
 
-if (-not (Test-Path $APK)) {
-    Write-Host "Ошибка: файл $APK не найден! Сначала соберите проект." -ForegroundColor Red
-    exit 1
-}
-
 # Проверяем, запущен ли уже эмулятор
 $devices = & $ADB devices | Where-Object { $_ -match "\bdevice\b" -and $_ -notmatch "List of" }
 
 if (-not $devices) {
-    Write-Host "Запуск эмулятора Android TV (ATV_9)..." -ForegroundColor Cyan
-    Start-Process $EMU -ArgumentList "-avd", "ATV_9", "-netdelay", "none", "-netspeed", "full"
+    # Проверяем доступные AVD (ATV_9 или ATV_11)
+    $avd = "ATV_9"
+    $availableAvds = & $EMU -list-avds
+    if ($availableAvds -notcontains "ATV_9" -and $availableAvds -contains "ATV_11") {
+        $avd = "ATV_11"
+    }
+
+    Write-Host "Запуск эмулятора Android TV ($avd)..." -ForegroundColor Cyan
+    Start-Process $EMU -ArgumentList "-avd", $avd, "-netdelay", "none", "-netspeed", "full"
 
     Write-Host "Ожидание готовности ADB..." -ForegroundColor Yellow
     & $ADB wait-for-device
@@ -46,9 +48,13 @@ if (-not $devices) {
     Write-Host "Обнаружено уже запущенное устройство/эмулятор." -ForegroundColor Green
 }
 
-Write-Host "Установка $([System.IO.Path]::GetFileName($APK))..." -ForegroundColor Green
-& $ADB install -r $APK
+if (Test-Path $APK) {
+    Write-Host "Установка $([System.IO.Path]::GetFileName($APK))..." -ForegroundColor Green
+    & $ADB install -r $APK
 
-Write-Host "Перезапуск Ru-VK-Tube ($PKG)..." -ForegroundColor Green
-& $ADB shell am force-stop $PKG
-& $ADB shell am start -n "$PKG/com.ruvk.tube.ui.main.MainActivity"
+    Write-Host "Перезапуск RuVK Hub ($PKG)..." -ForegroundColor Green
+    & $ADB shell am force-stop $PKG
+    & $ADB shell am start -n "$PKG/com.ruvk.tube.ui.main.MainActivity"
+} else {
+    Write-Host "APK не найден для установки. Запустите приложение вручную на ТВ." -ForegroundColor Yellow
+}

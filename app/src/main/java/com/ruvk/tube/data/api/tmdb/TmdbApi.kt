@@ -68,4 +68,11 @@ interface TmdbApi {
         @Query("language") language: String = "ru-RU",
         @Query("page") page: Int = 1
     ): TmdbPageResponse<TmdbMovieDto>
+
+    @GET("person/{person_id}/combined_credits")
+    suspend fun getPersonCredits(
+        @Path("person_id") personId: Long,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "ru-RU"
+    ): TmdbPersonCreditsDto
 }
