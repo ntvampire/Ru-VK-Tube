@@ -41,11 +41,6 @@
             android:screenOrientation="landscape" />
 
         <activity
-            android:name=".ui.settings.SettingsActivity"
-            android:exported="false"
-            android:screenOrientation="landscape" />
-
-        <activity
             android:name=".player.InternalPlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="false"

@@ -15,6 +15,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
@@ -22,14 +23,15 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import com.ruvk.tube.BuildConfig
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
+import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.data.update.UpdateInfo
 import com.ruvk.tube.data.update.UpdateManager
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
 import com.ruvk.tube.ui.details.DetailsActivity
-import com.ruvk.tube.ui.settings.SettingsActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -43,6 +45,17 @@ class MainActivity : FragmentActivity() {
     private lateinit var posterGridView: androidx.leanback.widget.HorizontalGridView
     private lateinit var loadingProgress: ProgressBar
     private lateinit var emptyText: TextView
+
+    // Экран Настроек
+    private lateinit var settingsContainer: ScrollView
+    private lateinit var infoContainer: View
+    private lateinit var cardSettingApiKey: View
+    private lateinit var txtApiKeyStatus: TextView
+    private lateinit var cardSettingClearHistory: View
+    private lateinit var cardSettingClearFavorites: View
+    private lateinit var cardSettingUpdate: View
+    private lateinit var txtVersionInfo: TextView
+    private lateinit var progressUpdateDownload: ProgressBar
 
     // Поиск по каталогу
     private lateinit var searchContainer: LinearLayout
@@ -94,6 +107,18 @@ class MainActivity : FragmentActivity() {
         posterGridView = findViewById(R.id.poster_grid_view)
         loadingProgress = findViewById(R.id.loading_progress)
         emptyText = findViewById(R.id.empty_text)
+
+        settingsContainer = findViewById(R.id.settings_container)
+        infoContainer = findViewById(R.id.info_container)
+        cardSettingApiKey = findViewById(R.id.card_setting_api_key)
+        txtApiKeyStatus = findViewById(R.id.txt_api_key_status)
+        cardSettingClearHistory = findViewById(R.id.card_setting_clear_history)
+        cardSettingClearFavorites = findViewById(R.id.card_setting_clear_favorites)
+        cardSettingUpdate = findViewById(R.id.card_setting_update)
+        txtVersionInfo = findViewById(R.id.txt_version_info)
+        progressUpdateDownload = findViewById(R.id.progress_update_download)
+
+        setupSettingsListeners()
 
         searchContainer = findViewById(R.id.search_container)
         searchEditText = findViewById(R.id.search_edit_text)
@@ -187,14 +212,11 @@ class MainActivity : FragmentActivity() {
 
         sideMenuAdapter = NumSideMenuAdapter(
             onItemSelected = { category ->
-                if (category == NumCategory.SETTINGS) {
-                    val intent = Intent(this, SettingsActivity::class.java)
-                    startActivity(intent)
-                } else {
-                    loadCategory(category)
-                    if (category == NumCategory.SEARCH) {
-                        searchEditText.requestFocus()
-                    }
+                loadCategory(category)
+                if (category == NumCategory.SEARCH) {
+                    searchEditText.requestFocus()
+                } else if (category == NumCategory.SETTINGS) {
+                    cardSettingApiKey.post { cardSettingApiKey.requestFocus() }
                 }
             },
             onMenuFocusChanged = { _ ->
@@ -203,7 +225,9 @@ class MainActivity : FragmentActivity() {
             onRightNavigate = {
                 if (sideMenuAdapter.selectedCategory == NumCategory.SEARCH) {
                     searchEditText.requestFocus()
-                } else if (sideMenuAdapter.selectedCategory != NumCategory.SETTINGS) {
+                } else if (sideMenuAdapter.selectedCategory == NumCategory.SETTINGS) {
+                    cardSettingApiKey.requestFocus()
+                } else {
                     posterGridView.requestFocus()
                 }
             }
@@ -302,6 +326,9 @@ class MainActivity : FragmentActivity() {
         clearHeroSpotlight()
 
         if (category == NumCategory.SEARCH) {
+            settingsContainer.visibility = View.GONE
+            infoContainer.visibility = View.VISIBLE
+            posterGridView.visibility = View.VISIBLE
             searchContainer.visibility = View.VISIBLE
             loadingProgress.visibility = View.GONE
             val currentQuery = searchEditText.text.toString().trim()
@@ -317,6 +344,21 @@ class MainActivity : FragmentActivity() {
             return
         }
 
+        if (category == NumCategory.SETTINGS) {
+            searchContainer.visibility = View.GONE
+            infoContainer.visibility = View.GONE
+            posterGridView.visibility = View.GONE
+            loadingProgress.visibility = View.GONE
+            emptyText.visibility = View.GONE
+            settingsContainer.visibility = View.VISIBLE
+            updateSettingsUi()
+            cardSettingApiKey.post { cardSettingApiKey.requestFocus() }
+            return
+        }
+
+        settingsContainer.visibility = View.GONE
+        infoContainer.visibility = View.VISIBLE
+        posterGridView.visibility = View.VISIBLE
         searchContainer.visibility = View.GONE
         loadingProgress.visibility = View.VISIBLE
         emptyText.visibility = View.GONE
@@ -658,15 +700,147 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::sideMenuAdapter.isInitialized && sideMenuAdapter.selectedCategory == NumCategory.HISTORY) {
-            loadCategory(NumCategory.HISTORY)
+        if (::sideMenuAdapter.isInitialized) {
+            when (sideMenuAdapter.selectedCategory) {
+                NumCategory.HISTORY -> loadCategory(NumCategory.HISTORY)
+                NumCategory.FAVORITES -> loadCategory(NumCategory.FAVORITES)
+                NumCategory.SETTINGS -> updateSettingsUi()
+                else -> {}
+            }
+        }
+    }
+
+    private fun setupSettingsListeners() {
+        cardSettingApiKey.setOnClickListener {
+            showApiKeyDialog()
+        }
+
+        cardSettingClearHistory.setOnClickListener {
+            showClearHistoryDialog()
+        }
+
+        cardSettingClearFavorites.setOnClickListener {
+            showClearFavoritesDialog()
+        }
+
+        cardSettingUpdate.setOnClickListener {
+            checkUpdateManual()
+        }
+    }
+
+    private fun updateSettingsUi() {
+        val customKey = AppPreferences.tmdbApiKey
+        if (customKey.isNotBlank()) {
+            txtApiKeyStatus.text = "Ключ: ${customKey.take(6)}...${customKey.takeLast(4)}"
+        } else {
+            txtApiKeyStatus.text = "Используется встроенный ключ"
+        }
+
+        val version = BuildConfig.VERSION_NAME
+        txtVersionInfo.text = "Текущая версия: v$version • Нажмите для проверки"
+    }
+
+    private fun showApiKeyDialog() {
+        val input = EditText(this).apply {
+            hint = "Введите ваш TMDB API v3 Key"
+            setText(AppPreferences.tmdbApiKey)
+            setSelection(text.length)
+            setSingleLine()
+            setPadding(24.dpToPx(), 16.dpToPx(), 24.dpToPx(), 16.dpToPx())
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("TMDB API Ключ")
+            .setView(input)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val newKey = input.text.toString().trim()
+                AppPreferences.tmdbApiKey = newKey
+                updateSettingsUi()
+                Toast.makeText(this, "Ключ TMDB обновлен", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Отмена", null)
+            .setNeutralButton("Сбросить") { _, _ ->
+                AppPreferences.tmdbApiKey = ""
+                updateSettingsUi()
+                Toast.makeText(this, "Используется встроенный ключ", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    private fun showClearHistoryDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Очистка истории")
+            .setMessage("Вы уверены, что хотите удалить все сохраненные позиции и историю просмотров?")
+            .setPositiveButton("Очистить") { _, _ ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    RuVkTubeApp.instance.database.historyDao().clearAll()
+                    RuVkTubeApp.instance.database.episodeProgressDao().clearAll()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "История просмотров очищена", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun showClearFavoritesDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Очистка Избранного")
+            .setMessage("Вы уверены, что хотите удалить все фильмы и сериалы из списка избранного?")
+            .setPositiveButton("Очистить") { _, _ ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    RuVkTubeApp.instance.database.favoritesDao().clearAll()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Избранное очищено", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun checkUpdateManual() {
+        txtVersionInfo.text = "Проверка обновлений..."
+        lifecycleScope.launch {
+            val update = UpdateManager.checkUpdate(force = true)
+            if (update != null) {
+                txtVersionInfo.text = "Доступно обновление: v${update.versionName}"
+                showUpdateDialog(update)
+            } else {
+                txtVersionInfo.text = "У вас установлена последняя версия (v${BuildConfig.VERSION_NAME})"
+                Toast.makeText(this@MainActivity, "Обновлений не найдено", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun startUpdateDownload(update: UpdateInfo) {
+        progressUpdateDownload.visibility = View.VISIBLE
+        progressUpdateDownload.progress = 0
+        txtVersionInfo.text = "Загрузка обновления v${update.versionName}..."
+        Toast.makeText(this, "Началась загрузка обновления v${update.versionName}", Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch {
+            val file = UpdateManager.downloadApk(this@MainActivity, update.apkUrl) { percent ->
+                progressUpdateDownload.progress = percent
+                txtVersionInfo.text = "Загрузка обновления: $percent%"
+            }
+            progressUpdateDownload.visibility = View.GONE
+            if (file != null && file.exists()) {
+                txtVersionInfo.text = "Запуск установки..."
+                UpdateManager.installApk(this@MainActivity, file)
+            } else {
+                txtVersionInfo.text = "Ошибка скачивания обновления"
+                Toast.makeText(this@MainActivity, "Не удалось скачать обновление", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
     private fun checkBackgroundUpdate() {
         lifecycleScope.launch {
-            val update = UpdateManager.checkUpdate(force = false)
-            if (update != null && !isFinishing) {
+            // Проверка обновлений при старте приложения
+            val update = UpdateManager.checkUpdate(force = true)
+            if (update != null && !isFinishing && !isDestroyed) {
                 showUpdateDialog(update)
             }
         }
@@ -678,10 +852,9 @@ class MainActivity : FragmentActivity() {
             val changelog = update.changelog ?: "Улучшения стабильности и новые возможности."
             AlertDialog.Builder(this)
                 .setTitle("Доступна новая версия v${update.versionName}")
-                .setMessage("Что нового:\n$changelog\n\nПерейти в Настройки для обновления?")
+                .setMessage("Что нового:\n$changelog\n\nОбновить сейчас?")
                 .setPositiveButton("Обновить") { _, _ ->
-                    val intent = Intent(this, SettingsActivity::class.java)
-                    startActivity(intent)
+                    startUpdateDownload(update)
                 }
                 .setNegativeButton("Позже", null)
                 .show()
@@ -730,7 +903,13 @@ class MainActivity : FragmentActivity() {
             return
         }
 
-        // 3. Если фокус в ленте постеров и позиция > 0 -> плавная перемотка ленты на 1-ю карточку (позиция 0)
+        // 3. Если фокус в контейнере настроек -> переход в боковое меню
+        if (settingsContainer.visibility == View.VISIBLE && isViewDescendant(currentFocus, settingsContainer)) {
+            focusSideMenu()
+            return
+        }
+
+        // 4. Если фокус в ленте постеров и позиция > 0 -> плавная перемотка ленты на 1-ю карточку (позиция 0)
         if (posterGridView.selectedPosition > 0) {
             posterGridView.setSelectedPositionSmooth(0)
             return

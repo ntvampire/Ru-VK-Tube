@@ -725,15 +725,6 @@ class DetailsActivity : FragmentActivity() {
         }
         val startPos = if (isTv) currentEpisodeSavedPositionMs else savedPositionMs
 
-        if (AppPreferences.isExternalPlayer && !source.isTrailer) {
-            ExternalPlayerLauncher.launch(
-                context = this,
-                streamUrl = source.streamUrl,
-                title = playTitle,
-                positionMs = startPos
-            )
-            return
-        }
         val intent = Intent(this, InternalPlayerActivity::class.java).apply {
             putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, source.streamUrl)
             putExtra(InternalPlayerActivity.EXTRA_TITLE, playTitle)
@@ -764,15 +755,6 @@ class DetailsActivity : FragmentActivity() {
             item.title
         }
 
-        if (AppPreferences.isExternalPlayer) {
-            ExternalPlayerLauncher.launch(
-                context = this,
-                streamUrl = streamUrl,
-                title = playTitle,
-                positionMs = startPosMs
-            )
-            return
-        }
         val intent = Intent(this, InternalPlayerActivity::class.java).apply {
             putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, streamUrl)
             putExtra(InternalPlayerActivity.EXTRA_TITLE, playTitle)

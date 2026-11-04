@@ -59,7 +59,7 @@ data class FavoriteEntity(
 
 @Dao
 interface HistoryDao {
-    @Query("SELECT * FROM watch_history ORDER BY updatedAt DESC LIMIT 20")
+    @Query("SELECT * FROM watch_history ORDER BY updatedAt DESC LIMIT 30")
     fun getAllHistory(): Flow<List<HistoryEntity>>
 
     @Query("SELECT * FROM watch_history WHERE tmdbId = :tmdbId LIMIT 1")
@@ -70,6 +70,12 @@ interface HistoryDao {
 
     @Query("DELETE FROM watch_history WHERE tmdbId = :tmdbId")
     suspend fun delete(tmdbId: Long)
+
+    @Query("DELETE FROM watch_history WHERE tmdbId NOT IN (SELECT tmdbId FROM watch_history ORDER BY updatedAt DESC LIMIT 30)")
+    suspend fun trimToLast30()
+
+    @Query("DELETE FROM watch_history")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -85,6 +91,9 @@ interface EpisodeProgressDao {
 
     @Query("DELETE FROM episode_progress WHERE tmdbId = :tmdbId")
     suspend fun deleteForShow(tmdbId: Long)
+
+    @Query("DELETE FROM episode_progress")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -100,6 +109,9 @@ interface FavoritesDao {
 
     @Query("DELETE FROM favorites WHERE tmdbId = :tmdbId")
     suspend fun delete(tmdbId: Long)
+
+    @Query("DELETE FROM favorites")
+    suspend fun clearAll()
 }
 
 @Database(

@@ -291,6 +291,8 @@ class InternalPlayerActivity : AppCompatActivity() {
                             updatedAt = now
                         )
                     )
+                    // Храним только последние 30 записей истории
+                    RuVkTubeApp.instance.database.historyDao().trimToLast30()
                 } catch (e: Exception) {
                     android.util.Log.e("InternalPlayer", "Failed to save playback position", e)
                 }
