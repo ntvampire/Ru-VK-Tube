@@ -473,10 +473,28 @@ class MainActivity : FragmentActivity() {
             var runtime = 0
             var ageRating: String? = null
 
+            val isTv = h.mediaType.equals("tv", ignoreCase = true)
+            var posMs = h.positionMs
+            var durMs = h.durationMs
+            var lastStream = h.lastStreamUrl
+            var sNum = h.season
+            var eNum = h.episode
+
+            if (isTv) {
+                // Всегда берем самую свежую просмотренную серию из таблицы episode_progress
+                val latestEp = RuVkTubeApp.instance.database.episodeProgressDao().getAllForShow(h.tmdbId).firstOrNull()
+                if (latestEp != null && latestEp.positionMs > 5_000L) {
+                    posMs = latestEp.positionMs
+                    durMs = latestEp.durationMs
+                    lastStream = latestEp.lastStreamUrl
+                    sNum = latestEp.season
+                    eNum = latestEp.episode
+                }
+            }
+
             // Если постер или метаданные отсутствуют (старые записи), догружаем из TMDB
             if (itemPoster.isNullOrBlank() && h.tmdbId > 0) {
                 try {
-                    val isTv = h.mediaType.equals("tv", ignoreCase = true)
                     val fullItem = if (isTv) {
                         RuVkTubeApp.instance.tmdbRepository.getTvDetails(h.tmdbId)
                     } else {
@@ -519,12 +537,12 @@ class MainActivity : FragmentActivity() {
                     voteAverage = itemRating,
                     runtimeMinutes = runtime,
                     ageRating = ageRating,
-                    mediaType = if (h.mediaType.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE,
-                    watchPositionMs = h.positionMs,
-                    watchDurationMs = h.durationMs,
-                    lastStreamUrl = h.lastStreamUrl,
-                    lastSeason = h.season,
-                    lastEpisode = h.episode
+                    mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+                    watchPositionMs = posMs,
+                    watchDurationMs = durMs,
+                    lastStreamUrl = lastStream,
+                    lastSeason = sNum,
+                    lastEpisode = eNum
                 )
             )
         }
@@ -547,7 +565,11 @@ class MainActivity : FragmentActivity() {
         // Бейдж прогресса просмотра
         if (item.watchPositionMs > 5_000L) {
             badgeWatchProgress.visibility = View.VISIBLE
-            badgeWatchProgress.text = "▶ ${formatTime(item.watchPositionMs)}"
+            if (item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0) {
+                badgeWatchProgress.text = "▶ S${item.lastSeason}E${item.lastEpisode} (${formatTime(item.watchPositionMs)})"
+            } else {
+                badgeWatchProgress.text = "▶ ${formatTime(item.watchPositionMs)}"
+            }
         } else {
             badgeWatchProgress.visibility = View.GONE
         }

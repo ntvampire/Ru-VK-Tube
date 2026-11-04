@@ -14,6 +14,7 @@ import coil.load
 import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.domain.models.MediaItem
+import com.ruvk.tube.domain.models.MediaType
 
 class NumPosterAdapter(
     private val onItemFocused: (MediaItem) -> Unit,
@@ -58,6 +59,7 @@ class NumPosterAdapter(
         private val posterImage: ImageView = itemView.findViewById(R.id.poster_image)
         private val posterTitleFallback: TextView = itemView.findViewById(R.id.poster_title_fallback)
         private val ratingBadge: TextView = itemView.findViewById(R.id.poster_rating_badge)
+        private val episodeBadge: TextView = itemView.findViewById(R.id.poster_episode_badge)
         private val watchProgressBar: ProgressBar = itemView.findViewById(R.id.poster_watch_progress)
 
         init {
@@ -101,10 +103,28 @@ class NumPosterAdapter(
                 ratingBadge.visibility = View.GONE
             }
 
-            // Полоса прогресса просмотра фильма
-            if (item.watchPositionMs > 5_000L && item.watchDurationMs > 30_000L) {
-                val progress = ((item.watchPositionMs.toDouble() / item.watchDurationMs) * 1000)
-                    .toInt().coerceIn(10, 1000)
+            // Номер серии для сериалов
+            if (item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0) {
+                episodeBadge.visibility = View.VISIBLE
+                episodeBadge.text = "S${item.lastSeason}E${item.lastEpisode}"
+            } else {
+                episodeBadge.visibility = View.GONE
+            }
+
+            // Полоса прогресса просмотра фильма или серии
+            if (item.watchPositionMs > 5_000L) {
+                val duration = if (item.watchDurationMs > 30_000L) {
+                    item.watchDurationMs
+                } else if (item.runtimeMinutes > 0) {
+                    item.runtimeMinutes * 60_000L
+                } else {
+                    0L
+                }
+                val progress = if (duration > 0) {
+                    ((item.watchPositionMs.toDouble() / duration) * 1000).toInt().coerceIn(20, 1000)
+                } else {
+                    300
+                }
                 watchProgressBar.progress = progress
                 watchProgressBar.visibility = View.VISIBLE
             } else {

@@ -86,4 +86,15 @@
         android:textSize="12sp"
         android:textStyle="bold"
         tools:text="Зима близко" />
+
+    <!-- Полоса прогресса просмотра серии -->
+    <ProgressBar
+        android:id="@+id/episode_watch_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_gravity="bottom"
+        android:max="1000"
+        android:progressDrawable="@drawable/bg_watch_progress"
+        android:visibility="gone" />
 </FrameLayout>

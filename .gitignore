@@ -10,3 +10,4 @@ app/build/
 .cxx
 emulator_screen.png
 !app/src/main/res/**/*.png
+RuVK-Hub-*.apk

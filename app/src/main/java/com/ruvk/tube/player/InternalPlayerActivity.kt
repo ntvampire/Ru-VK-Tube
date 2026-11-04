@@ -17,6 +17,7 @@ import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
 import com.ruvk.tube.data.db.EpisodeProgressEntity
 import com.ruvk.tube.data.db.HistoryEntity
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -231,6 +232,11 @@ class InternalPlayerActivity : AppCompatActivity() {
         exoPlayer?.pause()
     }
 
+    override fun onStop() {
+        super.onStop()
+        savePlaybackPosition()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         stopProgressTracking()
@@ -250,37 +256,44 @@ class InternalPlayerActivity : AppCompatActivity() {
 
         // Сохраняем в историю если воспроизведение длилось от 3 секунд
         if (validPos > 3_000L || validDur > 60_000L) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                if (mediaType == "TV" && season > 0 && episode > 0) {
-                    RuVkTubeApp.instance.database.episodeProgressDao().saveProgress(
-                        EpisodeProgressEntity(
+            val now = System.currentTimeMillis()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    if (mediaType == "TV" && season > 0 && episode > 0) {
+                        RuVkTubeApp.instance.database.episodeProgressDao().saveProgress(
+                            EpisodeProgressEntity(
+                                tmdbId = tmdbId,
+                                season = season,
+                                episode = episode,
+                                positionMs = validPos,
+                                durationMs = validDur,
+                                lastStreamUrl = streamUrl,
+                                updatedAt = now
+                            )
+                        )
+                    }
+
+                    RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
+                        HistoryEntity(
                             tmdbId = tmdbId,
-                            season = season,
-                            episode = episode,
+                            title = if (movieTitle.isNotBlank()) movieTitle else title,
+                            posterUrl = posterUrl,
+                            backdropUrl = backdropUrl,
+                            mediaType = mediaType,
                             positionMs = validPos,
                             durationMs = validDur,
-                            lastStreamUrl = streamUrl
+                            year = year,
+                            rating = rating,
+                            overview = overview,
+                            season = season,
+                            episode = episode,
+                            lastStreamUrl = streamUrl,
+                            updatedAt = now
                         )
                     )
+                } catch (e: Exception) {
+                    android.util.Log.e("InternalPlayer", "Failed to save playback position", e)
                 }
-
-                RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
-                    HistoryEntity(
-                        tmdbId = tmdbId,
-                        title = if (movieTitle.isNotBlank()) movieTitle else title,
-                        posterUrl = posterUrl,
-                        backdropUrl = backdropUrl,
-                        mediaType = mediaType,
-                        positionMs = validPos,
-                        durationMs = validDur,
-                        year = year,
-                        rating = rating,
-                        overview = overview,
-                        season = season,
-                        episode = episode,
-                        lastStreamUrl = streamUrl
-                    )
-                )
             }
         }
     }

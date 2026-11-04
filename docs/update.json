@@ -1,6 +1,6 @@
 {
-  "versionCode": 12,
-  "versionName": "1.1.1",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.1/RuVK-Hub-1.1.1.apk",
-  "changelog": "Раздельный тайминг серий сериалов, названия в фильмографии актеров, плавная бегущая строка (marquee) для длинных названий при наведении."
+  "versionCode": 13,
+  "versionName": "1.1.2",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.2/RuVK-Hub-1.1.2.apk",
+  "changelog": "Полноценное продолжение просмотра сериалов: сохранение и отображение серии/тайминга в истории и кнопке Смотреть, полоса прогресса у каждой серии, автоматическая плавная прокрутка к панели поиска источников при выборе серии."
 }

@@ -40,6 +40,23 @@
         android:textStyle="bold"
         android:visibility="gone" />
 
+    <!-- Номер серии для сериалов в истории просмотра -->
+    <TextView
+        android:id="@+id/poster_episode_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="8dp"
+        android:background="@drawable/bg_badge_rounded"
+        android:paddingStart="6dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="2dp"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <!-- Оценка фильма в углу постера -->
     <TextView
         android:id="@+id/poster_rating_badge"
