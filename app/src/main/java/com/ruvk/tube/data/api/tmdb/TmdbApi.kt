@@ -35,6 +35,8 @@ interface TmdbApi {
         @Query("release_date.lte") maxReleaseDate: String,
         @Query("sort_by") sortBy: String = "primary_release_date.desc",
         @Query("vote_count.gte") minVoteCount: Int = 5,
+        @Query("without_original_language") withoutOriginalLanguage: String = "ru,uk",
+        @Query("without_genres") withoutGenres: String = "10767,10764,10763",
         @Query("page") page: Int = 1
     ): TmdbPageResponse<TmdbMovieDto>
 

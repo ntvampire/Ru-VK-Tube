@@ -1,6 +1,6 @@
 {
-  "versionCode": 17,
-  "versionName": "1.1.6",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.6/RuVK-Hub-1.1.6.apk",
-  "changelog": "Обновлен стиль центральных кнопок воспроизведения и паузы в плеере: заменен яркий белый круг ExoPlayer на мягкую кинематографичную полупрозрачную подложку с тонким контуром."
+  "versionCode": 18,
+  "versionName": "1.1.7",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.7/RuVK-Hub-1.1.7.apk",
+  "changelog": "Очистка выборок: исключены российские и украинские фильмы и сериалы, ток-шоу, реалити и новости, а также нелокализованные произведения без русского названия."
 }

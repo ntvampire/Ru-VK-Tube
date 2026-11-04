@@ -27,44 +27,45 @@ class TmdbRepository {
             .create(TmdbApi::class.java)
     }
 
+    private val excludedGenreIds = setOf(
+        10767, // Ток-шоу (Talk Show)
+        10764, // Реалити-шоу (Reality TV / Live entertainment, WWE, etc.)
+        10763  // Новости (News / Daily live news)
+    )
+
     suspend fun getTrending(page: Int = 1): List<MediaItem> {
-        val response = api.getTrending(effectiveApiKey, page = page)
-        return response.results
-            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
-            .map { it.toMediaItem() }
+        return fetchFilteredList(page) { p ->
+            api.getTrending(effectiveApiKey, page = p)
+        }
     }
 
     suspend fun getPopularMovies(page: Int = 1): List<MediaItem> {
-        val response = api.getPopularMovies(effectiveApiKey, page = page)
-        return response.results
-            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
-            .map { it.toMediaItem(forceType = MediaType.MOVIE) }
+        return fetchFilteredList(page, forceType = MediaType.MOVIE) { p ->
+            api.getPopularMovies(effectiveApiKey, page = p)
+        }
     }
 
     suspend fun getPopularTv(page: Int = 1): List<MediaItem> {
-        val response = api.getPopularTv(effectiveApiKey, page = page)
-        return response.results
-            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
-            .map { it.toMediaItem(forceType = MediaType.TV) }
+        return fetchFilteredList(page, forceType = MediaType.TV) { p ->
+            api.getPopularTv(effectiveApiKey, page = p)
+        }
     }
 
     suspend fun getNewDigitalReleases(page: Int = 1): List<MediaItem> {
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val response = api.getNewDigitalReleases(
-            apiKey = effectiveApiKey,
-            maxReleaseDate = today,
-            page = page
-        )
-        return response.results
-            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
-            .map { it.toMediaItem(forceType = MediaType.MOVIE) }
+        return fetchFilteredList(page, forceType = MediaType.MOVIE) { p ->
+            api.getNewDigitalReleases(
+                apiKey = effectiveApiKey,
+                maxReleaseDate = today,
+                page = p
+            )
+        }
     }
 
     suspend fun getOnTheAirTv(page: Int = 1): List<MediaItem> {
-        val response = api.getOnTheAirTv(effectiveApiKey, page = page)
-        return response.results
-            .filter { !it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank() }
-            .map { it.toMediaItem(forceType = MediaType.TV) }
+        return fetchFilteredList(page, forceType = MediaType.TV) { p ->
+            api.getOnTheAirTv(effectiveApiKey, page = p)
+        }
     }
 
     suspend fun getMovieDetails(id: Long): MediaItem {
@@ -162,8 +163,7 @@ class TmdbRepository {
         val response = api.searchMulti(effectiveApiKey, query, page = page)
         return response.results
             .filter {
-                (it.mediaType == "movie" || it.mediaType == "tv") &&
-                        (!it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank())
+                (it.mediaType == "movie" || it.mediaType == "tv") && isAllowedMedia(it)
             }
             .sortedByDescending { it.voteCount ?: 0 }
             .map { it.toMediaItem() }
@@ -175,7 +175,7 @@ class TmdbRepository {
         return rawList
             .filter {
                 (it.mediaType == "movie" || it.mediaType == "tv" || it.mediaType == null) &&
-                        (!it.posterPath.isNullOrBlank() || !it.backdropPath.isNullOrBlank())
+                        isAllowedMedia(it)
             }
             .distinctBy { it.id }
             .sortedWith(
@@ -184,6 +184,76 @@ class TmdbRepository {
                 }.thenByDescending { it.voteAverage ?: 0.0 }
             )
             .map { it.toMediaItem() }
+    }
+
+    /**
+     * Фильтрация подгружаемых выборок:
+     * 1. Исключаем русские и украинские фильмы и сериалы (lang: ru/uk/ua, country: RU/UA).
+     * 2. Исключаем лайв и ток-шоу (жанры 10767, 10764, 10763).
+     * 3. Исключаем фильмы и сериалы, для которых нет русского названия.
+     */
+    private fun isAllowedMedia(dto: TmdbMovieDto): Boolean {
+        // 1. Постер или бэкдроп обязателен
+        if (dto.posterPath.isNullOrBlank() && dto.backdropPath.isNullOrBlank()) {
+            return false
+        }
+
+        // 2. Исключаем русские и украинские фильмы и сериалы
+        val lang = dto.originalLanguage?.trim()?.lowercase(Locale.ROOT)
+        if (lang == "ru" || lang == "uk" || lang == "ua") {
+            return false
+        }
+        val originCountries = dto.originCountry
+        if (originCountries != null && originCountries.any { it.equals("RU", ignoreCase = true) || it.equals("UA", ignoreCase = true) }) {
+            return false
+        }
+
+        // 3. Исключаем лайв и ток-шоу
+        val genres = dto.genreIds
+        if (genres != null && genres.any { it in excludedGenreIds }) {
+            return false
+        }
+
+        // 4. Исключаем фильмы и сериалы без русского названия
+        val resolvedTitle = dto.title?.takeIf { it.isNotBlank() }
+            ?: dto.name?.takeIf { it.isNotBlank() }
+            ?: return false
+
+        // Если в названии есть хотя бы одна буква кириллицы - название локализовано
+        if (resolvedTitle.any { it in '\u0400'..'\u04FF' }) {
+            return true
+        }
+
+        // Для числовых названий (напр. "1917", "2012", "1+1"): проверяем, переведен ли синопсис на русский
+        val hasLatinLetters = resolvedTitle.any { (it in 'a'..'z') || (it in 'A'..'Z') }
+        if (!hasLatinLetters && !dto.overview.isNullOrBlank() && dto.overview.any { it in '\u0400'..'\u04FF' }) {
+            return true
+        }
+
+        return false
+    }
+
+    private suspend fun fetchFilteredList(
+        startPage: Int,
+        forceType: MediaType? = null,
+        fetcher: suspend (page: Int) -> TmdbPageResponse<TmdbMovieDto>
+    ): List<MediaItem> {
+        val result = mutableListOf<MediaItem>()
+        var page = startPage
+        // Запрашиваем текущую страницу. Если после фильтрации она оказалась пустой (0 элементов),
+        // запрашиваем следующую, предотвращая ложное прекращение пагинации в ленте.
+        while (page <= startPage + 1) {
+            val response = fetcher(page)
+            val filtered = response.results
+                .filter { isAllowedMedia(it) }
+                .map { it.toMediaItem(forceType = forceType) }
+            result.addAll(filtered)
+            if (result.isNotEmpty() || page >= response.totalPages) {
+                break
+            }
+            page++
+        }
+        return result
     }
 
     private fun TmdbMovieDto.toMediaItem(forceType: MediaType? = null): MediaItem {

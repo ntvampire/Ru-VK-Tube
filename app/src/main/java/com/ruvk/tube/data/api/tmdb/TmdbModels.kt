@@ -23,7 +23,10 @@ data class TmdbMovieDto(
     @SerializedName("vote_average") val voteAverage: Double?,
     @SerializedName("vote_count") val voteCount: Int? = null,
     @SerializedName("popularity") val popularity: Double? = null,
-    @SerializedName("media_type") val mediaType: String?
+    @SerializedName("media_type") val mediaType: String?,
+    @SerializedName("original_language") val originalLanguage: String? = null,
+    @SerializedName("origin_country") val originCountry: List<String>? = null,
+    @SerializedName("genre_ids") val genreIds: List<Int>? = null
 )
 
 data class TmdbMovieDetailsDto(
