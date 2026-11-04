@@ -90,6 +90,8 @@ class MainActivity : FragmentActivity() {
 
     private var currentMediaItem: MediaItem? = null
     private var detailsFetchJob: Job? = null
+    private var lastOpenedTmdbId: Long = 0L
+    private var lastOpenedPosition: Int = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -318,12 +320,16 @@ class MainActivity : FragmentActivity() {
         })
     }
 
-    private fun loadCategory(category: NumCategory) {
+    private fun loadCategory(category: NumCategory, preservePosition: Boolean = false) {
         currentFeedJob?.cancel()
         currentPage = 1
         canLoadMore = true
         isLoadingNextPage = false
-        clearHeroSpotlight()
+        if (!preservePosition) {
+            clearHeroSpotlight()
+            lastOpenedTmdbId = 0L
+            lastOpenedPosition = -1
+        }
 
         if (category == NumCategory.SEARCH) {
             settingsContainer.visibility = View.GONE
@@ -360,9 +366,11 @@ class MainActivity : FragmentActivity() {
         infoContainer.visibility = View.VISIBLE
         posterGridView.visibility = View.VISIBLE
         searchContainer.visibility = View.GONE
-        loadingProgress.visibility = View.VISIBLE
-        emptyText.visibility = View.GONE
-        posterAdapter.submitList(emptyList())
+        if (!preservePosition) {
+            loadingProgress.visibility = View.VISIBLE
+            emptyText.visibility = View.GONE
+            posterAdapter.submitList(emptyList())
+        }
 
         currentFeedJob = lifecycleScope.launch {
             try {
@@ -384,9 +392,26 @@ class MainActivity : FragmentActivity() {
                 if (items.isNotEmpty()) {
                     emptyText.visibility = View.GONE
                     posterAdapter.submitList(items)
-                    posterGridView.scrollToPosition(0)
-                    posterGridView.post { posterGridView.requestFocus() }
-                    updateHeroSpotlight(items.first())
+
+                    val targetPos = if (preservePosition && lastOpenedTmdbId > 0) {
+                        val byId = items.indexOfFirst { it.id == lastOpenedTmdbId }
+                        if (byId >= 0) byId else (if (lastOpenedPosition in items.indices) lastOpenedPosition else 0)
+                    } else if (preservePosition && lastOpenedPosition in items.indices) {
+                        lastOpenedPosition
+                    } else {
+                        0
+                    }
+
+                    posterGridView.setSelectedPosition(targetPos)
+                    posterGridView.post {
+                        posterGridView.setSelectedPosition(targetPos)
+                        posterGridView.requestFocus()
+                    }
+                    updateHeroSpotlight(items[targetPos])
+                    if (preservePosition) {
+                        lastOpenedTmdbId = 0L
+                        lastOpenedPosition = -1
+                    }
                 } else {
                     emptyText.text = when (category) {
                         NumCategory.FAVORITES -> "В избранном пока ничего нет"
@@ -692,6 +717,8 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun openMovieDetails(item: MediaItem) {
+        lastOpenedTmdbId = item.id
+        lastOpenedPosition = posterGridView.selectedPosition
         val intent = Intent(this, DetailsActivity::class.java).apply {
             putExtra(DetailsActivity.EXTRA_MEDIA_ITEM, item)
         }
@@ -702,8 +729,18 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         if (::sideMenuAdapter.isInitialized) {
             when (sideMenuAdapter.selectedCategory) {
-                NumCategory.HISTORY -> loadCategory(NumCategory.HISTORY)
-                NumCategory.FAVORITES -> loadCategory(NumCategory.FAVORITES)
+                NumCategory.HISTORY -> {
+                    if (lastOpenedPosition < 0 && ::posterGridView.isInitialized && posterGridView.selectedPosition >= 0) {
+                        lastOpenedPosition = posterGridView.selectedPosition
+                    }
+                    loadCategory(NumCategory.HISTORY, preservePosition = true)
+                }
+                NumCategory.FAVORITES -> {
+                    if (lastOpenedPosition < 0 && ::posterGridView.isInitialized && posterGridView.selectedPosition >= 0) {
+                        lastOpenedPosition = posterGridView.selectedPosition
+                    }
+                    loadCategory(NumCategory.FAVORITES, preservePosition = true)
+                }
                 NumCategory.SETTINGS -> updateSettingsUi()
                 else -> {}
             }
