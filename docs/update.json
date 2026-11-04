@@ -1,6 +1,6 @@
 {
-  "versionCode": 15,
-  "versionName": "1.1.4",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.4/RuVK-Hub-1.1.4.apk",
-  "changelog": "Сохранение позиции и фокуса на карточке в лентах истории и избранного при возврате из экрана описания фильма или сериала."
+  "versionCode": 16,
+  "versionName": "1.1.5",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.5/RuVK-Hub-1.1.5.apk",
+  "changelog": "Мгновенная пауза по нажатию OK с показом интерфейса, автозатемнение картинки при паузе >30 сек, мягкий полупрозрачный значок Play/Pause, автовыравнивание звука (+3 dB) на базе LoudnessEnhancer с переключателем в Настройках."
 }

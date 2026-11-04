@@ -1,5 +1,6 @@
 package com.ruvk.tube.player
 
+import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -17,6 +18,7 @@ import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
 import com.ruvk.tube.data.db.EpisodeProgressEntity
 import com.ruvk.tube.data.db.HistoryEntity
+import com.ruvk.tube.data.local.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,7 +31,12 @@ class InternalPlayerActivity : AppCompatActivity() {
 
     private lateinit var playerView: PlayerView
     private lateinit var bufferingBar: ProgressBar
+    private lateinit var dimOverlay: View
     private var exoPlayer: ExoPlayer? = null
+    private var loudnessEnhancer: LoudnessEnhancer? = null
+
+    private var isDimmed = false
+    private var pauseDimJob: Job? = null
 
     private var streamUrl: String = ""
     private var title: String = ""
@@ -69,6 +76,7 @@ class InternalPlayerActivity : AppCompatActivity() {
 
         playerView = findViewById(R.id.player_view)
         bufferingBar = findViewById(R.id.player_buffering)
+        dimOverlay = findViewById(R.id.player_dim_overlay)
 
         val titleView = playerView.findViewById<TextView>(R.id.player_title)
         val qualityView = playerView.findViewById<TextView>(R.id.player_quality_badge)
@@ -135,12 +143,17 @@ class InternalPlayerActivity : AppCompatActivity() {
             playWhenReady = true
 
             addListener(object : Player.Listener {
+                override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                    setupAudioEffects(audioSessionId)
+                }
+
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         Player.STATE_BUFFERING -> bufferingBar.visibility = View.VISIBLE
                         Player.STATE_READY -> bufferingBar.visibility = View.GONE
                         Player.STATE_ENDED -> {
                             bufferingBar.visibility = View.GONE
+                            cancelPauseDimTimer()
                             stopProgressTracking()
                             if (isTrailer) finish()
                         }
@@ -150,18 +163,25 @@ class InternalPlayerActivity : AppCompatActivity() {
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (isPlaying) {
+                        cancelPauseDimTimer()
                         startProgressTracking()
                     } else {
                         stopProgressTracking()
                         savePlaybackPosition()
+                        startPauseDimTimer()
                     }
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
                     bufferingBar.visibility = View.GONE
+                    cancelPauseDimTimer()
                     stopProgressTracking()
                 }
             })
+        }
+
+        exoPlayer?.audioSessionId?.let { sessionId ->
+            if (sessionId > 0) setupAudioEffects(sessionId)
         }
 
         playerView.player = exoPlayer
@@ -198,35 +218,136 @@ class InternalPlayerActivity : AppCompatActivity() {
         }
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        val player = exoPlayer ?: return super.onKeyDown(keyCode, event)
-
-        when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                playerView.showController()
-                player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                playerView.showController()
-                player.seekTo((player.currentPosition + 10_000).coerceAtMost(player.duration))
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                if (player.isPlaying) {
-                    player.pause()
-                    playerView.showController()
-                } else {
-                    player.play()
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val player = exoPlayer
+            if (player != null) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                        if (isDimmed) {
+                            hideDimOverlay()
+                        }
+                        if (player.isPlaying) {
+                            player.pause()
+                            playerView.showController()
+                            startPauseDimTimer()
+                        } else {
+                            cancelPauseDimTimer()
+                            player.play()
+                            playerView.hideController()
+                        }
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        if (isDimmed) {
+                            hideDimOverlay()
+                        }
+                        if (!player.isPlaying) {
+                            startPauseDimTimer()
+                        }
+                        playerView.showController()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        if (isDimmed) {
+                            hideDimOverlay()
+                        }
+                        if (!player.isPlaying) {
+                            startPauseDimTimer()
+                        }
+                        playerView.showController()
+                        player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (isDimmed) {
+                            hideDimOverlay()
+                        }
+                        if (!player.isPlaying) {
+                            startPauseDimTimer()
+                        }
+                        playerView.showController()
+                        player.seekTo((player.currentPosition + 10_000).coerceAtMost(player.duration))
+                        return true
+                    }
+                    KeyEvent.KEYCODE_BACK -> {
+                        if (isDimmed) {
+                            hideDimOverlay()
+                            if (!player.isPlaying) {
+                                startPauseDimTimer()
+                            }
+                            return true
+                        }
+                        if (playerView.isControllerFullyVisible) {
+                            playerView.hideController()
+                            return true
+                        }
+                    }
                 }
-                return true
             }
         }
-        return super.onKeyDown(keyCode, event)
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun startPauseDimTimer() {
+        pauseDimJob?.cancel()
+        pauseDimJob = lifecycleScope.launch {
+            delay(30_000L)
+            showDimOverlay()
+        }
+    }
+
+    private fun cancelPauseDimTimer() {
+        pauseDimJob?.cancel()
+        pauseDimJob = null
+        if (isDimmed) {
+            hideDimOverlay()
+        }
+    }
+
+    private fun showDimOverlay() {
+        if (isFinishing || isDestroyed) return
+        isDimmed = true
+        dimOverlay.visibility = View.VISIBLE
+        dimOverlay.animate().alpha(1f).setDuration(800).start()
+    }
+
+    private fun hideDimOverlay() {
+        isDimmed = false
+        dimOverlay.animate().alpha(0f).setDuration(250).withEndAction {
+            if (!isDimmed) {
+                dimOverlay.visibility = View.GONE
+            }
+        }.start()
+    }
+
+    private fun setupAudioEffects(audioSessionId: Int) {
+        if (audioSessionId <= 0) return
+        releaseAudioEffects()
+        if (!AppPreferences.audioCompressionEnabled) return
+        try {
+            loudnessEnhancer = LoudnessEnhancer(audioSessionId).apply {
+                setTargetGain(300) // +3.0 dB
+                enabled = true
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("InternalPlayer", "LoudnessEnhancer initialization skipped", e)
+        }
+    }
+
+    private fun releaseAudioEffects() {
+        try {
+            loudnessEnhancer?.enabled = false
+            loudnessEnhancer?.release()
+        } catch (e: Exception) {
+            // ignore
+        }
+        loudnessEnhancer = null
     }
 
     override fun onPause() {
         super.onPause()
+        cancelPauseDimTimer()
         stopProgressTracking()
         savePlaybackPosition()
         exoPlayer?.pause()
@@ -234,13 +355,16 @@ class InternalPlayerActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        cancelPauseDimTimer()
         savePlaybackPosition()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        cancelPauseDimTimer()
         stopProgressTracking()
         savePlaybackPosition()
+        releaseAudioEffects()
         exoPlayer?.release()
         exoPlayer = null
     }

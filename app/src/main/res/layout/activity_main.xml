@@ -393,7 +393,7 @@
                 android:focusableInTouchMode="true"
                 android:nextFocusLeft="@+id/side_menu_recycler"
                 android:nextFocusUp="@+id/card_setting_clear_history"
-                android:nextFocusDown="@+id/card_setting_update"
+                android:nextFocusDown="@+id/card_setting_audio_compression"
                 android:orientation="vertical"
                 android:paddingStart="20dp"
                 android:paddingTop="14dp"
@@ -419,7 +419,46 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
-            <!-- 4. Настройка обновления приложения -->
+            <!-- 4. Автовыравнивание звука (+3 dB) -->
+            <LinearLayout
+                android:id="@+id/card_setting_audio_compression"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                android:background="@drawable/bg_menu_item_selector"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@+id/side_menu_recycler"
+                android:nextFocusUp="@+id/card_setting_clear_favorites"
+                android:nextFocusDown="@+id/card_setting_update"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingTop="14dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:duplicateParentState="true"
+                    android:text="Автовыравнивание звука (+3 dB)"
+                    android:textColor="@color/color_menu_item_text"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txt_audio_compression_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:duplicateParentState="true"
+                    android:text="Включено (компрессия диапазона и мягкое усиление)"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- 5. Настройка обновления приложения -->
             <LinearLayout
                 android:id="@+id/card_setting_update"
                 android:layout_width="match_parent"
@@ -430,7 +469,7 @@
                 android:focusable="true"
                 android:focusableInTouchMode="true"
                 android:nextFocusLeft="@+id/side_menu_recycler"
-                android:nextFocusUp="@+id/card_setting_clear_favorites"
+                android:nextFocusUp="@+id/card_setting_audio_compression"
                 android:orientation="vertical"
                 android:paddingStart="20dp"
                 android:paddingTop="14dp"

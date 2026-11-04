@@ -15,6 +15,15 @@
         app:surface_type="surface_view"
         app:use_controller="true" />
 
+    <!-- Затемнение экрана при паузе >30 сек для защиты матрицы ТВ и комфорта глаз -->
+    <View
+        android:id="@+id/player_dim_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:background="#B3000000"
+        android:visibility="gone" />
+
     <ProgressBar
         android:id="@+id/player_buffering"
         android:layout_width="64dp"

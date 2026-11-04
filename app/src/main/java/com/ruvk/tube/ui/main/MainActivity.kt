@@ -53,6 +53,8 @@ class MainActivity : FragmentActivity() {
     private lateinit var txtApiKeyStatus: TextView
     private lateinit var cardSettingClearHistory: View
     private lateinit var cardSettingClearFavorites: View
+    private lateinit var cardSettingAudioCompression: View
+    private lateinit var txtAudioCompressionStatus: TextView
     private lateinit var cardSettingUpdate: View
     private lateinit var txtVersionInfo: TextView
     private lateinit var progressUpdateDownload: ProgressBar
@@ -116,6 +118,8 @@ class MainActivity : FragmentActivity() {
         txtApiKeyStatus = findViewById(R.id.txt_api_key_status)
         cardSettingClearHistory = findViewById(R.id.card_setting_clear_history)
         cardSettingClearFavorites = findViewById(R.id.card_setting_clear_favorites)
+        cardSettingAudioCompression = findViewById(R.id.card_setting_audio_compression)
+        txtAudioCompressionStatus = findViewById(R.id.txt_audio_compression_status)
         cardSettingUpdate = findViewById(R.id.card_setting_update)
         txtVersionInfo = findViewById(R.id.txt_version_info)
         progressUpdateDownload = findViewById(R.id.progress_update_download)
@@ -760,6 +764,11 @@ class MainActivity : FragmentActivity() {
             showClearFavoritesDialog()
         }
 
+        cardSettingAudioCompression.setOnClickListener {
+            AppPreferences.audioCompressionEnabled = !AppPreferences.audioCompressionEnabled
+            updateAudioCompressionStatus()
+        }
+
         cardSettingUpdate.setOnClickListener {
             checkUpdateManual()
         }
@@ -773,8 +782,18 @@ class MainActivity : FragmentActivity() {
             txtApiKeyStatus.text = "Используется встроенный ключ"
         }
 
+        updateAudioCompressionStatus()
+
         val version = BuildConfig.VERSION_NAME
         txtVersionInfo.text = "Текущая версия: v$version • Нажмите для проверки"
+    }
+
+    private fun updateAudioCompressionStatus() {
+        if (AppPreferences.audioCompressionEnabled) {
+            txtAudioCompressionStatus.text = "Включено (компрессия диапазона и мягкое усиление +3 dB)"
+        } else {
+            txtAudioCompressionStatus.text = "Выключено (оригинальный стереозвук без обработки)"
+        }
     }
 
     private fun showApiKeyDialog() {
