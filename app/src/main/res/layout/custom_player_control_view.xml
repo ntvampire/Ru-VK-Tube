@@ -58,7 +58,7 @@
         android:layout_height="72dp"
         android:layout_gravity="center"
         android:background="?android:attr/selectableItemBackgroundBorderless"
-        android:src="@drawable/exo_ic_play_circle_filled" />
+        android:src="@drawable/player_ic_play" />
 
     <!-- Нижняя панель (Vimu-style тонкий прогресс-бар и таймкоды) -->
     <LinearLayout

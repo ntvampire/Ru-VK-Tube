@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Переопределение стандартных иконок Media3 PlayerControlView на кастомные мягкие векторные иконки -->
+    <drawable name="exo_styled_controls_play">@drawable/player_ic_play</drawable>
+    <drawable name="exo_styled_controls_pause">@drawable/player_ic_pause</drawable>
+</resources>
