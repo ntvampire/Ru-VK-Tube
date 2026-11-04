@@ -1,6 +1,6 @@
 {
-  "versionCode": 11,
-  "versionName": "1.1.0",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.0/RuVK-Hub-1.1.0.apk",
-  "changelog": "Полноценная поддержка сериалов: выбор сезонов и серий с превью из TMDB, точечный поиск серий на Rutube и VK Video, сохранение прогресса серии и автопродолжение."
+  "versionCode": 12,
+  "versionName": "1.1.1",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.1/RuVK-Hub-1.1.1.apk",
+  "changelog": "Раздельный тайминг серий сериалов, названия в фильмографии актеров, плавная бегущая строка (marquee) для длинных названий при наведении."
 }

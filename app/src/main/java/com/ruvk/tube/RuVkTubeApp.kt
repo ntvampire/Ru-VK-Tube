@@ -36,7 +36,10 @@ class RuVkTubeApp : Application(), ImageLoaderFactory {
             applicationContext,
             AppDatabase::class.java,
             "ruvk_tube.db"
-        ).fallbackToDestructiveMigration().build()
+        )
+        .addMigrations(AppDatabase.MIGRATION_2_3)
+        .fallbackToDestructiveMigration()
+        .build()
 
         tmdbRepository = TmdbRepository()
         vkClient = VkClient()

@@ -56,6 +56,7 @@ class NumEpisodeAdapter(
             cardRoot.clipToOutline = true
 
             cardRoot.setOnFocusChangeListener { view, hasFocus ->
+                titleText.isSelected = hasFocus
                 if (hasFocus) {
                     view.animate().scaleX(1.06f).scaleY(1.06f).setDuration(150).start()
                     view.elevation = 8f

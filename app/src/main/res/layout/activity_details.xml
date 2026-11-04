@@ -480,7 +480,7 @@
                 <androidx.leanback.widget.HorizontalGridView
                     android:id="@+id/filmography_grid_view"
                     android:layout_width="match_parent"
-                    android:layout_height="225dp"
+                    android:layout_height="235dp"
                     android:clipToPadding="false"
                     android:paddingStart="56dp"
                     android:paddingEnd="56dp" />

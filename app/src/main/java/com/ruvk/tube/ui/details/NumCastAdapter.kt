@@ -57,6 +57,8 @@ class NumCastAdapter(
             photo.clipToOutline = true
 
             container.setOnFocusChangeListener { _, hasFocus ->
+                name.isSelected = hasFocus
+                character.isSelected = hasFocus
                 if (hasFocus) {
                     container.animate().scaleX(1.06f).scaleY(1.06f).setDuration(150).start()
                 } else {

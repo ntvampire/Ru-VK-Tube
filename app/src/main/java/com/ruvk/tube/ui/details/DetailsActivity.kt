@@ -27,7 +27,6 @@ import com.ruvk.tube.domain.models.VideoSource
 import com.ruvk.tube.player.DeviceCapabilityHelper
 import com.ruvk.tube.player.ExternalPlayerLauncher
 import com.ruvk.tube.player.InternalPlayerActivity
-import com.ruvk.tube.ui.main.NumPosterAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -65,7 +64,7 @@ class DetailsActivity : FragmentActivity() {
     private lateinit var filmographyHeader: TextView
     private lateinit var filmographyProgress: ProgressBar
     private lateinit var filmographyGridView: androidx.leanback.widget.HorizontalGridView
-    private lateinit var filmographyAdapter: NumPosterAdapter
+    private lateinit var filmographyAdapter: NumFilmographyAdapter
     private var filmographyJob: Job? = null
 
     private lateinit var seriesSection: LinearLayout
@@ -80,6 +79,7 @@ class DetailsActivity : FragmentActivity() {
     private var currentEpisodesList = listOf<TvEpisode>()
     private var savedSeason: Int = 0
     private var savedEpisode: Int = 0
+    private var currentEpisodeSavedPositionMs: Long = 0L
 
     private lateinit var sourceAdapter: NumSourceAdapter
 
@@ -213,15 +213,12 @@ class DetailsActivity : FragmentActivity() {
 
         // Настройка полки фильмографии (1 ряд)
         filmographyGridView.setNumRows(1)
-        filmographyAdapter = NumPosterAdapter(
-            onItemFocused = {},
-            onItemClicked = { movie ->
-                val intent = Intent(this, DetailsActivity::class.java).apply {
-                    putExtra(EXTRA_MEDIA_ITEM, movie)
-                }
-                startActivity(intent)
+        filmographyAdapter = NumFilmographyAdapter { movie ->
+            val intent = Intent(this, DetailsActivity::class.java).apply {
+                putExtra(EXTRA_MEDIA_ITEM, movie)
             }
-        )
+            startActivity(intent)
+        }
         filmographyGridView.adapter = filmographyAdapter
 
         if (!savedStreamUrl.isNullOrBlank() && savedPositionMs > 5_000L) {
@@ -507,6 +504,17 @@ class DetailsActivity : FragmentActivity() {
         val item = mediaItem ?: return
         currentSeasonNumber = episode.seasonNumber
         currentEpisodeNumber = episode.episodeNumber
+        currentEpisodeSavedPositionMs = 0L
+
+        lifecycleScope.launch {
+            val progress = withContext(Dispatchers.IO) {
+                RuVkTubeApp.instance.database.episodeProgressDao()
+                    .getProgress(item.id, episode.seasonNumber, episode.episodeNumber)
+            }
+            if (progress != null && progress.positionMs > 5_000L) {
+                currentEpisodeSavedPositionMs = progress.positionMs
+            }
+        }
 
         isSearchingSources = true
         sourcesSection.visibility = View.VISIBLE
@@ -681,13 +689,14 @@ class DetailsActivity : FragmentActivity() {
         } else {
             "${item.title} (${source.quality})"
         }
+        val startPos = if (isTv) currentEpisodeSavedPositionMs else savedPositionMs
 
         if (AppPreferences.isExternalPlayer && !source.isTrailer) {
             ExternalPlayerLauncher.launch(
                 context = this,
                 streamUrl = source.streamUrl,
                 title = playTitle,
-                positionMs = savedPositionMs
+                positionMs = startPos
             )
             return
         }
@@ -696,7 +705,7 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_TITLE, playTitle)
             putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
             putExtra(InternalPlayerActivity.EXTRA_QUALITY, source.quality)
-            putExtra(InternalPlayerActivity.EXTRA_START_POSITION_MS, savedPositionMs)
+            putExtra(InternalPlayerActivity.EXTRA_START_POSITION_MS, startPos)
             putExtra(InternalPlayerActivity.EXTRA_IS_TRAILER, source.isTrailer)
             putExtra(InternalPlayerActivity.EXTRA_POSTER_URL, item.posterUrl)
             putExtra(InternalPlayerActivity.EXTRA_BACKDROP_URL, item.backdropUrl)
@@ -761,10 +770,13 @@ class DetailsActivity : FragmentActivity() {
                 savedStreamUrl = history.lastStreamUrl
                 savedSeason = history.season
                 savedEpisode = history.episode
-                btnWatch.text = if (mediaItem?.mediaType == MediaType.TV && savedSeason > 0 && savedEpisode > 0) {
-                    "(S${savedSeason}E${savedEpisode} ${formatTime(savedPositionMs)})"
+                if (mediaItem?.mediaType == MediaType.TV && savedSeason > 0 && savedEpisode > 0) {
+                    btnWatch.text = "(S${savedSeason}E${savedEpisode} ${formatTime(savedPositionMs)})"
+                    if (currentSeasonNumber == savedSeason && currentEpisodeNumber == savedEpisode) {
+                        currentEpisodeSavedPositionMs = savedPositionMs
+                    }
                 } else {
-                    "(${formatTime(savedPositionMs)})"
+                    btnWatch.text = "(${formatTime(savedPositionMs)})"
                 }
                 btnSources.visibility = View.VISIBLE
             } else {

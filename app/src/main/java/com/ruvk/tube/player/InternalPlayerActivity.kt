@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
+import com.ruvk.tube.data.db.EpisodeProgressEntity
 import com.ruvk.tube.data.db.HistoryEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -112,7 +113,13 @@ class InternalPlayerActivity : AppCompatActivity() {
             if (startPositionMs == 0L && !isTrailer && tmdbId > 0) {
                 lifecycleScope.launch {
                     val savedPos = withContext(Dispatchers.IO) {
-                        RuVkTubeApp.instance.database.historyDao().getByTmdbId(tmdbId)?.positionMs ?: 0L
+                        if (mediaType == "TV" && season > 0 && episode > 0) {
+                            RuVkTubeApp.instance.database.episodeProgressDao()
+                                .getProgress(tmdbId, season, episode)?.positionMs ?: 0L
+                        } else {
+                            RuVkTubeApp.instance.database.historyDao()
+                                .getByTmdbId(tmdbId)?.positionMs ?: 0L
+                        }
                     }
                     if (savedPos > 5_000L) {
                         exoPlayer?.seekTo(savedPos)
@@ -244,6 +251,19 @@ class InternalPlayerActivity : AppCompatActivity() {
         // Сохраняем в историю если воспроизведение длилось от 3 секунд
         if (validPos > 3_000L || validDur > 60_000L) {
             lifecycleScope.launch(Dispatchers.IO) {
+                if (mediaType == "TV" && season > 0 && episode > 0) {
+                    RuVkTubeApp.instance.database.episodeProgressDao().saveProgress(
+                        EpisodeProgressEntity(
+                            tmdbId = tmdbId,
+                            season = season,
+                            episode = episode,
+                            positionMs = validPos,
+                            durationMs = validDur,
+                            lastStreamUrl = streamUrl
+                        )
+                    )
+                }
+
                 RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
                     HistoryEntity(
                         tmdbId = tmdbId,
