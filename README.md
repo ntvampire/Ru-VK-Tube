@@ -30,7 +30,7 @@ $env:ANDROID_HOME = "D:\Projects\AndroidSDK"
 # Сборка подписанного Release APK (v1 + v2 + v3 подписи):
 .\gradlew.bat assembleRelease
 
-# Запуск локального эмулятора Android TV (ATV_9 / ATV_11) и автоустановка:
+# Запуск локального эмулятора Android TV (ATV_11 / ATV_9):
 .\run_emulator.ps1
 
 # Ручная установка на подключенный телевизор / приставку через ADB:
