@@ -4,7 +4,11 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -198,6 +202,9 @@ object TvChannelsManager {
         return try {
             val existing = helper.allChannels.firstOrNull { it.internalProviderId == internalId }
             if (existing != null) {
+                if (!existing.isBrowsable) {
+                    makeChannelBrowsable(context, existing.id)
+                }
                 return existing.id
             }
 
@@ -208,13 +215,17 @@ object TvChannelsManager {
                 .setInternalProviderId(internalId)
                 .setAppLinkIntentUri(appLinkUri)
 
+            // PreviewChannelHelper.publishChannel требует наличия логотипа непосредственно в Builder
+            val logoBitmap = getChannelLogoBitmap(context)
+            channelBuilder.setLogo(logoBitmap)
+
             val channelId = if (isDefault) {
                 helper.publishDefaultChannel(channelBuilder.build())
             } else {
                 helper.publishChannel(channelBuilder.build())
             }
 
-            setChannelLogo(context, channelId)
+            makeChannelBrowsable(context, channelId)
             channelId
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get or create channel $internalId", e)
@@ -222,15 +233,35 @@ object TvChannelsManager {
         }
     }
 
-    private fun setChannelLogo(context: Context, channelId: Long) {
+    private fun makeChannelBrowsable(context: Context, channelId: Long) {
         try {
-            val bitmap = BitmapFactory.decodeResource(context.resources, R.drawable.app_icon)
-            if (bitmap != null) {
-                ChannelLogoUtils.storeChannelLogo(context, channelId, bitmap)
+            val values = android.content.ContentValues().apply {
+                put(TvContractCompat.Channels.COLUMN_BROWSABLE, 1)
             }
+            context.contentResolver.update(
+                TvContractCompat.buildChannelUri(channelId),
+                values,
+                null,
+                null
+            )
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to set channel logo for $channelId", e)
+            Log.w(TAG, "Failed to update browsable flag for channel $channelId", e)
         }
+    }
+
+    private fun getChannelLogoBitmap(context: Context): Bitmap {
+        val decoded = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.app_icon)
+        } catch (_: Exception) {
+            null
+        }
+        if (decoded != null) return decoded
+
+        val fallback = Bitmap.createBitmap(80, 80, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(fallback)
+        val paint = Paint().apply { color = Color.parseColor("#0A82FF") }
+        canvas.drawCircle(40f, 40f, 36f, paint)
+        return fallback
     }
 
     private fun syncPrograms(
