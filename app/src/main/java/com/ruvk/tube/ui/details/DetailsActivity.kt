@@ -17,6 +17,7 @@ import coil.load
 import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
+import com.ruvk.tube.channels.TvChannelsManager
 import com.ruvk.tube.data.db.FavoriteEntity
 import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.domain.models.CastMember
@@ -98,7 +99,48 @@ class DetailsActivity : FragmentActivity() {
         setContentView(R.layout.activity_details)
 
         @Suppress("DEPRECATION")
-        val item = intent.getSerializableExtra(EXTRA_MEDIA_ITEM) as? MediaItem
+        var item = intent.getSerializableExtra(EXTRA_MEDIA_ITEM) as? MediaItem
+        if (item == null) {
+            val id = intent.getLongExtra(EXTRA_MEDIA_ID, 0L)
+            if (id > 0) {
+                val typeStr = intent.getStringExtra(EXTRA_MEDIA_TYPE)
+                val mediaType = if (typeStr == MediaType.TV.name) MediaType.TV else MediaType.MOVIE
+                val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
+                val origTitle = intent.getStringExtra(EXTRA_ORIGINAL_TITLE) ?: ""
+                val overview = intent.getStringExtra(EXTRA_OVERVIEW) ?: ""
+                val poster = intent.getStringExtra(EXTRA_POSTER_URL)
+                val backdrop = intent.getStringExtra(EXTRA_BACKDROP_URL)
+                val year = intent.getIntExtra(EXTRA_YEAR, 0)
+                val rating = intent.getDoubleExtra(EXTRA_RATING, 0.0)
+                val runtime = intent.getIntExtra(EXTRA_RUNTIME, 0)
+                val age = intent.getStringExtra(EXTRA_AGE_RATING)
+                val pos = intent.getLongExtra(EXTRA_WATCH_POSITION, 0L)
+                val dur = intent.getLongExtra(EXTRA_WATCH_DURATION, 0L)
+                val stream = intent.getStringExtra(EXTRA_LAST_STREAM)
+                val sNum = intent.getIntExtra(EXTRA_LAST_SEASON, 0)
+                val eNum = intent.getIntExtra(EXTRA_LAST_EPISODE, 0)
+
+                item = MediaItem(
+                    id = id,
+                    title = title,
+                    originalTitle = origTitle,
+                    overview = overview,
+                    posterUrl = poster,
+                    backdropUrl = backdrop,
+                    releaseDate = if (year > 0) "$year" else "",
+                    year = year,
+                    voteAverage = rating,
+                    runtimeMinutes = runtime,
+                    mediaType = mediaType,
+                    ageRating = age,
+                    watchPositionMs = pos,
+                    watchDurationMs = dur,
+                    lastStreamUrl = stream,
+                    lastSeason = sNum,
+                    lastEpisode = eNum
+                )
+            }
+        }
         if (item == null) {
             finish()
             return
@@ -875,6 +917,7 @@ class DetailsActivity : FragmentActivity() {
                         )
                     )
                 }
+                TvChannelsManager.syncFavoritesChannel(applicationContext)
             }
             isFavorite = !isFavorite
             updateFavoriteButton()
@@ -972,5 +1015,21 @@ class DetailsActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_MEDIA_ITEM = "extra_media_item"
+        const val EXTRA_MEDIA_ID = "extra_media_id"
+        const val EXTRA_MEDIA_TYPE = "extra_media_type"
+        const val EXTRA_TITLE = "extra_title"
+        const val EXTRA_ORIGINAL_TITLE = "extra_original_title"
+        const val EXTRA_OVERVIEW = "extra_overview"
+        const val EXTRA_POSTER_URL = "extra_poster_url"
+        const val EXTRA_BACKDROP_URL = "extra_backdrop_url"
+        const val EXTRA_YEAR = "extra_year"
+        const val EXTRA_RATING = "extra_rating"
+        const val EXTRA_RUNTIME = "extra_runtime"
+        const val EXTRA_AGE_RATING = "extra_age_rating"
+        const val EXTRA_WATCH_POSITION = "extra_watch_position"
+        const val EXTRA_WATCH_DURATION = "extra_watch_duration"
+        const val EXTRA_LAST_STREAM = "extra_last_stream"
+        const val EXTRA_LAST_SEASON = "extra_last_season"
+        const val EXTRA_LAST_EPISODE = "extra_last_episode"
     }
 }

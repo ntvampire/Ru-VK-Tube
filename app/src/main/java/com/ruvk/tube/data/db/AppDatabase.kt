@@ -62,6 +62,9 @@ interface HistoryDao {
     @Query("SELECT * FROM watch_history ORDER BY updatedAt DESC LIMIT 30")
     fun getAllHistory(): Flow<List<HistoryEntity>>
 
+    @Query("SELECT * FROM watch_history ORDER BY updatedAt DESC LIMIT 30")
+    suspend fun getRecentHistoryList(): List<HistoryEntity>
+
     @Query("SELECT * FROM watch_history WHERE tmdbId = :tmdbId LIMIT 1")
     suspend fun getByTmdbId(tmdbId: Long): HistoryEntity?
 
@@ -100,6 +103,9 @@ interface EpisodeProgressDao {
 interface FavoritesDao {
     @Query("SELECT * FROM favorites ORDER BY addedAt DESC")
     fun getAllFavorites(): Flow<List<FavoriteEntity>>
+
+    @Query("SELECT * FROM favorites ORDER BY addedAt DESC")
+    suspend fun getAllFavoritesList(): List<FavoriteEntity>
 
     @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE tmdbId = :tmdbId)")
     suspend fun isFavorite(tmdbId: Long): Boolean

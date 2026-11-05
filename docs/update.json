@@ -1,6 +1,6 @@
 {
-  "versionCode": 18,
-  "versionName": "1.1.7",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.7/RuVK-Hub-1.1.7.apk",
-  "changelog": "Очистка выборок: исключены российские и украинские фильмы и сериалы, ток-шоу, реалити и новости, а также нелокализованные произведения без русского названия."
+  "versionCode": 19,
+  "versionName": "1.1.8",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.8/RuVK-Hub-1.1.8.apk",
+  "changelog": "Каналы главного экрана Android TV: добавлены каналы «В тренде», «Избранное» и «История просмотров» с отображением прогресса и моментальным переходом к просмотру."
 }

@@ -26,6 +26,7 @@ import coil.load
 import com.ruvk.tube.BuildConfig
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
+import com.ruvk.tube.channels.TvChannelsManager
 import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.data.update.UpdateInfo
 import com.ruvk.tube.data.update.UpdateManager
@@ -55,6 +56,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var cardSettingClearFavorites: View
     private lateinit var cardSettingAudioCompression: View
     private lateinit var txtAudioCompressionStatus: TextView
+    private lateinit var cardSettingTvChannels: View
     private lateinit var cardSettingUpdate: View
     private lateinit var txtVersionInfo: TextView
     private lateinit var progressUpdateDownload: ProgressBar
@@ -102,8 +104,32 @@ class MainActivity : FragmentActivity() {
         initViews()
         setupSideMenu()
         setupPosterGrid()
-        loadCategory(NumCategory.TRENDING)
+
+        val initialCategory = parseTargetCategory(intent) ?: NumCategory.TRENDING
+        sideMenuAdapter.setSelected(initialCategory)
+        loadCategory(initialCategory)
+
         checkBackgroundUpdate()
+        TvChannelsManager.requestChannelsBrowsable(this)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val category = parseTargetCategory(intent)
+        if (category != null) {
+            sideMenuAdapter.setSelected(category)
+            loadCategory(category)
+        }
+    }
+
+    private fun parseTargetCategory(intent: Intent?): NumCategory? {
+        val catName = intent?.getStringExtra(EXTRA_TARGET_CATEGORY) ?: return null
+        return try {
+            NumCategory.valueOf(catName)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun initViews() {
@@ -120,6 +146,7 @@ class MainActivity : FragmentActivity() {
         cardSettingClearFavorites = findViewById(R.id.card_setting_clear_favorites)
         cardSettingAudioCompression = findViewById(R.id.card_setting_audio_compression)
         txtAudioCompressionStatus = findViewById(R.id.txt_audio_compression_status)
+        cardSettingTvChannels = findViewById(R.id.card_setting_tv_channels)
         cardSettingUpdate = findViewById(R.id.card_setting_update)
         txtVersionInfo = findViewById(R.id.txt_version_info)
         progressUpdateDownload = findViewById(R.id.progress_update_download)
@@ -769,6 +796,16 @@ class MainActivity : FragmentActivity() {
             updateAudioCompressionStatus()
         }
 
+        cardSettingTvChannels.setOnClickListener {
+            lifecycleScope.launch(Dispatchers.IO) {
+                TvChannelsManager.syncAllChannels(this@MainActivity)
+                withContext(Dispatchers.Main) {
+                    TvChannelsManager.requestChannelsBrowsable(this@MainActivity)
+                    Toast.makeText(this@MainActivity, "Каналы Android TV синхронизированы", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
         cardSettingUpdate.setOnClickListener {
             checkUpdateManual()
         }
@@ -831,6 +868,7 @@ class MainActivity : FragmentActivity() {
                 lifecycleScope.launch(Dispatchers.IO) {
                     RuVkTubeApp.instance.database.historyDao().clearAll()
                     RuVkTubeApp.instance.database.episodeProgressDao().clearAll()
+                    TvChannelsManager.syncHistoryChannel(this@MainActivity)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@MainActivity, "История просмотров очищена", Toast.LENGTH_SHORT).show()
                     }
@@ -847,6 +885,7 @@ class MainActivity : FragmentActivity() {
             .setPositiveButton("Очистить") { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     RuVkTubeApp.instance.database.favoritesDao().clearAll()
+                    TvChannelsManager.syncFavoritesChannel(this@MainActivity)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@MainActivity, "Избранное очищено", Toast.LENGTH_SHORT).show()
                     }
@@ -976,4 +1015,8 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()
+
+    companion object {
+        const val EXTRA_TARGET_CATEGORY = "extra_target_category"
+    }
 }

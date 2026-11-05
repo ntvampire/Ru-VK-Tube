@@ -431,7 +431,7 @@
                 android:focusableInTouchMode="true"
                 android:nextFocusLeft="@+id/side_menu_recycler"
                 android:nextFocusUp="@+id/card_setting_clear_favorites"
-                android:nextFocusDown="@+id/card_setting_update"
+                android:nextFocusDown="@+id/card_setting_tv_channels"
                 android:orientation="vertical"
                 android:paddingStart="20dp"
                 android:paddingTop="14dp"
@@ -458,7 +458,46 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
-            <!-- 5. Настройка обновления приложения -->
+            <!-- 5. Каналы Android TV -->
+            <LinearLayout
+                android:id="@+id/card_setting_tv_channels"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                android:background="@drawable/bg_menu_item_selector"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@+id/side_menu_recycler"
+                android:nextFocusUp="@+id/card_setting_audio_compression"
+                android:nextFocusDown="@+id/card_setting_update"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingTop="14dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:duplicateParentState="true"
+                    android:text="Каналы главного экрана Android TV"
+                    android:textColor="@color/color_menu_item_text"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txt_tv_channels_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:duplicateParentState="true"
+                    android:text="Обновить каналы: «В тренде», «Избранное», «История просмотров»"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- 6. Настройка обновления приложения -->
             <LinearLayout
                 android:id="@+id/card_setting_update"
                 android:layout_width="match_parent"
@@ -469,7 +508,7 @@
                 android:focusable="true"
                 android:focusableInTouchMode="true"
                 android:nextFocusLeft="@+id/side_menu_recycler"
-                android:nextFocusUp="@+id/card_setting_audio_compression"
+                android:nextFocusUp="@+id/card_setting_tv_channels"
                 android:orientation="vertical"
                 android:paddingStart="20dp"
                 android:paddingTop="14dp"
