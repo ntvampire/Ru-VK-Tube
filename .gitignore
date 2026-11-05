@@ -11,3 +11,5 @@ app/build/
 emulator_screen.png
 !app/src/main/res/**/*.png
 RuVK-Hub-*.apk
+TZ.md
+RETROSPECTIVE.md
