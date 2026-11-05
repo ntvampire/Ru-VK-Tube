@@ -1,6 +1,6 @@
 {
-  "versionCode": 20,
-  "versionName": "1.1.9",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.1.9/RuVK-Hub-1.1.9.apk",
-  "changelog": "Исправлена публикация каналов Android TV в TvProvider (добавление логотипа и активация видимости строк)."
+  "versionCode": 21,
+  "versionName": "1.2.0",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.0/RuVK-Hub-1.2.0.apk",
+  "changelog": "Расширенные карточки каналов (возрастной рейтинг, оценка, год, длительность, 3 строки описания) и интеграция с системным каналом Play Next."
 }

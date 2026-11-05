@@ -869,6 +869,7 @@ class MainActivity : FragmentActivity() {
                     RuVkTubeApp.instance.database.historyDao().clearAll()
                     RuVkTubeApp.instance.database.episodeProgressDao().clearAll()
                     TvChannelsManager.syncHistoryChannel(this@MainActivity)
+                    TvChannelsManager.clearWatchNext(this@MainActivity)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@MainActivity, "История просмотров очищена", Toast.LENGTH_SHORT).show()
                     }

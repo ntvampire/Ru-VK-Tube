@@ -17,6 +17,7 @@ import androidx.tvprovider.media.tv.PreviewChannel
 import androidx.tvprovider.media.tv.PreviewChannelHelper
 import androidx.tvprovider.media.tv.PreviewProgram
 import androidx.tvprovider.media.tv.TvContractCompat
+import androidx.tvprovider.media.tv.WatchNextProgram
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -30,7 +31,11 @@ import com.ruvk.tube.ui.details.DetailsActivity
 import com.ruvk.tube.ui.main.MainActivity
 import com.ruvk.tube.ui.main.NumCategory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 object TvChannelsManager {
@@ -57,6 +62,7 @@ object TvChannelsManager {
             syncTrendingChannel(context)
             syncFavoritesChannel(context)
             syncHistoryChannel(context)
+            syncWatchNext(context)
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing all TV channels", e)
         }
@@ -76,10 +82,40 @@ object TvChannelsManager {
                 isDefault = true
             ) ?: return@withContext
 
-            val trendingItems = try {
+            val rawTrending = try {
                 RuVkTubeApp.instance.tmdbRepository.getTrending(page = 1).take(20)
             } catch (e: Exception) {
                 Log.w(TAG, "Could not fetch trending from TMDB", e)
+                emptyList()
+            }
+
+            val trendingItems = if (rawTrending.isNotEmpty()) {
+                coroutineScope {
+                    rawTrending.map { item ->
+                        async {
+                            try {
+                                if (item.mediaType == MediaType.TV) {
+                                    val details = RuVkTubeApp.instance.tmdbRepository.getTvDetails(item.id)
+                                    item.copy(
+                                        ageRating = details.ageRating,
+                                        runtimeMinutes = details.runtimeMinutes,
+                                        overview = details.overview.ifBlank { item.overview }
+                                    )
+                                } else {
+                                    val details = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(item.id)
+                                    item.copy(
+                                        ageRating = details.ageRating,
+                                        runtimeMinutes = details.runtimeMinutes,
+                                        overview = details.overview.ifBlank { item.overview }
+                                    )
+                                }
+                            } catch (_: Exception) {
+                                item
+                            }
+                        }
+                    }.awaitAll()
+                }
+            } else {
                 emptyList()
             }
 
@@ -106,19 +142,43 @@ object TvChannelsManager {
             ) ?: return@withContext
 
             val favEntities = RuVkTubeApp.instance.database.favoritesDao().getAllFavoritesList()
-            val favItems = favEntities.map { f ->
-                MediaItem(
-                    id = f.tmdbId,
-                    title = f.title,
-                    originalTitle = "",
-                    overview = f.overview ?: "",
-                    posterUrl = f.posterUrl,
-                    backdropUrl = f.backdropUrl,
-                    releaseDate = if (f.year > 0) "${f.year}" else "",
-                    year = f.year,
-                    voteAverage = f.rating,
-                    mediaType = if (f.mediaType == MediaType.TV.name) MediaType.TV else MediaType.MOVIE
-                )
+            val favItems = coroutineScope {
+                favEntities.map { f ->
+                    async {
+                        val isTv = f.mediaType == MediaType.TV.name
+                        var ageRating: String? = null
+                        var runtimeMinutes = 0
+                        var overview = f.overview ?: ""
+                        try {
+                            if (isTv) {
+                                val tvDetails = RuVkTubeApp.instance.tmdbRepository.getTvDetails(f.tmdbId)
+                                ageRating = tvDetails.ageRating
+                                runtimeMinutes = tvDetails.runtimeMinutes
+                                if (overview.isBlank()) overview = tvDetails.overview
+                            } else {
+                                val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(f.tmdbId)
+                                ageRating = mDetails.ageRating
+                                runtimeMinutes = mDetails.runtimeMinutes
+                                if (overview.isBlank()) overview = mDetails.overview
+                            }
+                        } catch (_: Exception) {}
+
+                        MediaItem(
+                            id = f.tmdbId,
+                            title = f.title,
+                            originalTitle = "",
+                            overview = overview,
+                            posterUrl = f.posterUrl,
+                            backdropUrl = f.backdropUrl,
+                            releaseDate = if (f.year > 0) "${f.year}" else "",
+                            year = f.year,
+                            voteAverage = f.rating,
+                            runtimeMinutes = runtimeMinutes,
+                            ageRating = ageRating,
+                            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE
+                        )
+                    }
+                }.awaitAll()
             }
             syncPrograms(context, helper, channelId, favItems)
         } catch (e: Exception) {
@@ -141,9 +201,111 @@ object TvChannelsManager {
             ) ?: return@withContext
 
             val histEntities = RuVkTubeApp.instance.database.historyDao().getRecentHistoryList()
-            val historyItems = mutableListOf<MediaItem>()
+            val historyItems = coroutineScope {
+                histEntities.map { h ->
+                    async {
+                        val isTv = h.mediaType == MediaType.TV.name
+                        var posMs = h.positionMs
+                        var durMs = h.durationMs
+                        var lastStream = h.lastStreamUrl
+                        var sNum = h.season
+                        var eNum = h.episode
 
-            for (h in histEntities) {
+                        if (isTv) {
+                            val latestEp = RuVkTubeApp.instance.database.episodeProgressDao()
+                                .getAllForShow(h.tmdbId).firstOrNull()
+                            if (latestEp != null && latestEp.positionMs > 5_000L) {
+                                posMs = latestEp.positionMs
+                                durMs = latestEp.durationMs
+                                lastStream = latestEp.lastStreamUrl
+                                sNum = latestEp.season
+                                eNum = latestEp.episode
+                            }
+                        }
+
+                        var ageRating: String? = null
+                        var runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else 0
+                        var overview = h.overview ?: ""
+
+                        try {
+                            if (isTv) {
+                                val tvDetails = RuVkTubeApp.instance.tmdbRepository.getTvDetails(h.tmdbId)
+                                ageRating = tvDetails.ageRating
+                                if (runtimeMinutes == 0) runtimeMinutes = tvDetails.runtimeMinutes
+                                if (overview.isBlank()) overview = tvDetails.overview
+                            } else {
+                                val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(h.tmdbId)
+                                ageRating = mDetails.ageRating
+                                if (runtimeMinutes == 0) runtimeMinutes = mDetails.runtimeMinutes
+                                if (overview.isBlank()) overview = mDetails.overview
+                            }
+                        } catch (_: Exception) {}
+
+                        MediaItem(
+                            id = h.tmdbId,
+                            title = h.title,
+                            originalTitle = "",
+                            overview = overview,
+                            posterUrl = h.posterUrl,
+                            backdropUrl = h.backdropUrl,
+                            releaseDate = if (h.year > 0) "${h.year}" else "",
+                            year = h.year,
+                            voteAverage = h.rating,
+                            runtimeMinutes = runtimeMinutes,
+                            ageRating = ageRating,
+                            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+                            watchPositionMs = posMs,
+                            watchDurationMs = durMs,
+                            lastStreamUrl = lastStream,
+                            lastSeason = sNum,
+                            lastEpisode = eNum
+                        )
+                    }
+                }.awaitAll()
+            }
+
+            syncPrograms(context, helper, channelId, historyItems)
+            // При обновлении истории просмотров сразу синхронизируем системный Play Next
+            syncWatchNext(context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing History channel", e)
+        }
+    }
+
+    suspend fun syncWatchNext(context: Context) = withContext(Dispatchers.IO) {
+        if (!isTvChannelsSupported()) return@withContext
+        try {
+            val helper = PreviewChannelHelper(context)
+            val histEntities = RuVkTubeApp.instance.database.historyDao().getRecentHistoryList()
+
+            // В Play Next выводим только реально начатые и недосмотренные до конца видео (> 5 сек и < 95% длительности)
+            val inProgressEntities = histEntities.filter { h ->
+                val pos = h.positionMs
+                val dur = h.durationMs
+                pos > 5_000L && (dur <= 0L || pos < (dur * 0.95).toLong())
+            }.take(10)
+
+            // Запрашиваем уже опубликованные нами программы из системного Watch Next
+            val existingPrograms = mutableListOf<WatchNextProgram>()
+            try {
+                context.contentResolver.query(
+                    TvContractCompat.WatchNextPrograms.CONTENT_URI,
+                    WatchNextProgram.PROJECTION,
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        existingPrograms.add(WatchNextProgram.fromCursor(cursor))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to query WatchNext programs", e)
+            }
+
+            val existingMap = existingPrograms.associateBy { it.internalProviderId }.toMutableMap()
+
+            for (h in inProgressEntities) {
                 val isTv = h.mediaType == MediaType.TV.name
                 var posMs = h.positionMs
                 var durMs = h.durationMs
@@ -163,30 +325,163 @@ object TvChannelsManager {
                     }
                 }
 
-                historyItems.add(
-                    MediaItem(
-                        id = h.tmdbId,
-                        title = h.title,
-                        originalTitle = "",
-                        overview = h.overview ?: "",
-                        posterUrl = h.posterUrl,
-                        backdropUrl = h.backdropUrl,
-                        releaseDate = if (h.year > 0) "${h.year}" else "",
-                        year = h.year,
-                        voteAverage = h.rating,
-                        mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
-                        watchPositionMs = posMs,
-                        watchDurationMs = durMs,
-                        lastStreamUrl = lastStream,
-                        lastSeason = sNum,
-                        lastEpisode = eNum
-                    )
+                // Пропускаем, если серия/фильм завершены
+                if (durMs > 0L && posMs >= (durMs * 0.95).toLong()) {
+                    continue
+                }
+
+                val internalId = "watch_next_${if (isTv) "TV" else "MOVIE"}_${h.tmdbId}"
+                val existing = existingMap.remove(internalId)
+
+                var ageRating: String? = null
+                var runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else 0
+                var overview = h.overview ?: ""
+
+                try {
+                    if (isTv) {
+                        val tvDetails = RuVkTubeApp.instance.tmdbRepository.getTvDetails(h.tmdbId)
+                        ageRating = tvDetails.ageRating
+                        if (runtimeMinutes == 0) runtimeMinutes = tvDetails.runtimeMinutes
+                        if (overview.isBlank()) overview = tvDetails.overview
+                    } else {
+                        val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(h.tmdbId)
+                        ageRating = mDetails.ageRating
+                        if (runtimeMinutes == 0) runtimeMinutes = mDetails.runtimeMinutes
+                        if (overview.isBlank()) overview = mDetails.overview
+                    }
+                } catch (_: Exception) {}
+
+                val mediaItem = MediaItem(
+                    id = h.tmdbId,
+                    title = h.title,
+                    originalTitle = "",
+                    overview = overview,
+                    posterUrl = h.posterUrl,
+                    backdropUrl = h.backdropUrl,
+                    releaseDate = if (h.year > 0) "${h.year}" else "",
+                    year = h.year,
+                    voteAverage = h.rating,
+                    runtimeMinutes = runtimeMinutes,
+                    ageRating = ageRating,
+                    mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+                    watchPositionMs = posMs,
+                    watchDurationMs = durMs,
+                    lastStreamUrl = lastStream,
+                    lastSeason = sNum,
+                    lastEpisode = eNum
                 )
+
+                val programBuilder = if (existing != null) {
+                    WatchNextProgram.Builder(existing)
+                } else {
+                    WatchNextProgram.Builder()
+                }
+
+                val programUri = buildProgramIntentUri(context, mediaItem)
+                val imageUri = mediaItem.posterUrl?.takeIf { it.isNotBlank() }
+                    ?: mediaItem.backdropUrl?.takeIf { it.isNotBlank() }
+                val overviewText = mediaItem.overview.takeIf { it.isNotBlank() } ?: mediaItem.title
+
+                programBuilder
+                    .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
+                    .setLastEngagementTimeUtcMillis(h.updatedAt)
+                    .setTitle(buildProgramTitle(mediaItem))
+                    .setDescription(overviewText)
+                    .setLongDescription(overviewText)
+                    .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
+                    .setType(if (isTv) TvContractCompat.PreviewPrograms.TYPE_TV_SERIES else TvContractCompat.PreviewPrograms.TYPE_MOVIE)
+                    .setIntentUri(programUri)
+                    .setInternalProviderId(internalId)
+                    .setLastPlaybackPositionMillis(posMs.toInt())
+                    .setDurationMillis(if (durMs > 0L) durMs.toInt() else 0)
+
+                if (imageUri != null) {
+                    programBuilder.setPosterArtUri(Uri.parse(imageUri))
+                }
+
+                try {
+                    if (existing != null) {
+                        helper.updateWatchNextProgram(programBuilder.build(), existing.id)
+                    } else {
+                        helper.publishWatchNextProgram(programBuilder.build())
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to publish/update WatchNext program: ${mediaItem.title}", e)
+                }
             }
 
-            syncPrograms(context, helper, channelId, historyItems)
+            // Удаляем из WatchNext те программы, которые пользователь досмотрел или удалил
+            for ((_, removed) in existingMap) {
+                try {
+                    val uri = TvContractCompat.buildWatchNextProgramUri(removed.id)
+                    context.contentResolver.delete(uri, null, null)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to delete completed/removed WatchNext program ${removed.id}", e)
+                }
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error syncing History channel", e)
+            Log.e(TAG, "Error syncing WatchNext programs", e)
+        }
+    }
+
+    fun clearWatchNext(context: Context) {
+        if (!isTvChannelsSupported()) return
+        try {
+            context.contentResolver.delete(TvContractCompat.WatchNextPrograms.CONTENT_URI, null, null)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear WatchNext programs", e)
+        }
+    }
+
+    fun buildProgramTitle(item: MediaItem): String {
+        val meta = mutableListOf<String>()
+
+        // 1. Возрастной рейтинг: 18+, 16+, 12+, 6+, 0+
+        item.ageRating?.takeIf { it.isNotBlank() }?.let {
+            meta.add(it)
+        }
+
+        // 2. Рейтинг: ★ 6.6
+        if (item.voteAverage > 0.0) {
+            meta.add(String.format(Locale.US, "★ %.1f", item.voteAverage))
+        }
+
+        // 3. Год: 2026
+        val yearStr = when {
+            item.year > 0 -> item.year.toString()
+            item.releaseDate.isNotBlank() -> item.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
+            else -> null
+        }
+        if (yearStr != null) {
+            meta.add(yearStr)
+        }
+
+        // 4. Длительность: 99 мин или S1E3 • 48 мин
+        val runtimeMinutes = when {
+            item.runtimeMinutes > 0 -> item.runtimeMinutes
+            item.watchDurationMs > 0L -> (item.watchDurationMs / 60_000L).toInt()
+            else -> 0
+        }
+        val episodeInfo = if (item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0) {
+            "S${item.lastSeason}E${item.lastEpisode}"
+        } else null
+
+        when {
+            episodeInfo != null && runtimeMinutes > 0 -> {
+                meta.add("$episodeInfo $runtimeMinutes мин")
+            }
+            episodeInfo != null -> {
+                meta.add(episodeInfo)
+            }
+            runtimeMinutes > 0 -> {
+                meta.add("$runtimeMinutes мин")
+            }
+        }
+
+        return if (meta.isNotEmpty()) {
+            "${item.title}  •  ${meta.joinToString(" • ")}"
+        } else {
+            item.title
         }
     }
 
@@ -299,11 +594,13 @@ object TvChannelsManager {
             val programUri = buildProgramIntentUri(context, item)
             val imageUri = item.posterUrl?.takeIf { it.isNotBlank() }
                 ?: item.backdropUrl?.takeIf { it.isNotBlank() }
+            val overviewText = item.overview.takeIf { it.isNotBlank() } ?: item.title
 
             programBuilder
                 .setChannelId(channelId)
-                .setTitle(item.title)
-                .setDescription(item.overview.takeIf { it.isNotBlank() } ?: item.title)
+                .setTitle(buildProgramTitle(item))
+                .setDescription(overviewText)
+                .setLongDescription(overviewText)
                 .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
                 .setType(if (item.mediaType == MediaType.TV) TvContractCompat.PreviewPrograms.TYPE_TV_SERIES else TvContractCompat.PreviewPrograms.TYPE_MOVIE)
                 .setIntentUri(programUri)
