@@ -1,7 +1,11 @@
 # RuVK Hub
 
+[![Latest Release](https://img.shields.io/github/v/release/ntvampire/Ru-VK-Tube?color=0A82FF&label=Release)](https://github.com/ntvampire/Ru-VK-Tube/releases/latest)
+[![Status](https://img.shields.io/badge/Status-Stable-brightgreen.svg)](https://github.com/ntvampire/Ru-VK-Tube/releases/latest)
+[![Platform](https://img.shields.io/badge/Platform-Android%20TV%20(Leanback)-blue.svg)](https://developer.android.com/tv)
+[![Min SDK](https://img.shields.io/badge/API-21%2B%20(Android%205.0%2B)-orange.svg)](https://developer.android.com)
+
 Автономный каталог и плеер фильмов и сериалов для Android TV (версии 9.0+ / API 21+).
-Текущая стабильная версия: **v1.1.8**.
 
 ## Назначение
 - **Каналы главного экрана Android TV:** интеграция с Android TV Launcher (Android 8.0+ / Leanback Channels) — автоматическая публикация каналов «В тренде», «Избранное» и «История просмотров» с отображением полосы прогресса воспроизведения на карточках и моментальным переходом к просмотру.
@@ -12,27 +16,3 @@
 - **Настройки и управление данными:** встроенный экран настроек (без разрыва бокового меню), управление ключом TMDB, переключатель автовыравнивания звука (+3 dB), ручная синхронизация каналов Android TV, очистка истории (строгий лимит в 30 записей) и избранного.
 - **Полная автономность:** без сторонних серверов, регистраций и авторизаций. Локальное хранение истории и избранного в Room SQLite.
 - **Автообновление:** проверка новых версий на GitHub при холодном старте приложения и установка APK через системный PackageInstaller.
-
-## Документация проекта
-- 📋 [**TZ.md**](TZ.md) — Полное техническое задание (архитектура, стек, требования к экранам и сериалам).
-- 📜 [**RETROSPECTIVE.md**](RETROSPECTIVE.md) — Хронология версий (v1.0.0 – v1.1.8) и разбор ключевых инженерных решений и багов (Lessons Learned).
-
-## Сборка и запуск
-Требования: JDK 17, Android SDK (API 34).
-
-```powershell
-$env:JAVA_HOME = "D:\Projects\AndroidSDK\jdk-17"
-$env:ANDROID_HOME = "D:\Projects\AndroidSDK"
-
-# Сборка Debug APK:
-.\gradlew.bat assembleDebug
-
-# Сборка подписанного Release APK (v1 + v2 + v3 подписи):
-.\gradlew.bat assembleRelease
-
-# Запуск локального эмулятора Android TV (ATV_11 / ATV_9):
-.\run_emulator.ps1
-
-# Ручная установка на подключенный телевизор / приставку через ADB:
-adb install -r app\build\outputs\apk\release\RuVK-Hub-1.1.8.apk
-```
