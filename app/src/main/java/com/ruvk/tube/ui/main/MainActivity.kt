@@ -224,6 +224,17 @@ class MainActivity : FragmentActivity() {
         searchEditText.nextFocusLeftId = R.id.side_menu_recycler
         searchEditText.nextFocusDownId = R.id.poster_grid_view
 
+        searchEditText.setOnKeyListener { _, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (posterAdapter.itemCount == 0) {
+                    if (navigateFeedCategory(direction = 1)) {
+                        return@setOnKeyListener true
+                    }
+                }
+            }
+            false
+        }
+
         searchClearBtn.setOnClickListener {
             searchEditText.setText("")
             searchEditText.requestFocus()
@@ -273,12 +284,28 @@ class MainActivity : FragmentActivity() {
         // Перехват кнопок пульта в HorizontalGridView
         posterGridView.setOnKeyInterceptListener { event ->
             if (event.action == KeyEvent.ACTION_DOWN) {
-                if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && posterGridView.selectedPosition <= 0) {
-                    focusSideMenu()
-                    return@setOnKeyInterceptListener true
-                } else if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && sideMenuAdapter.selectedCategory == NumCategory.SEARCH) {
-                    if (searchEditText.requestFocus()) {
-                        return@setOnKeyInterceptListener true
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        if (posterGridView.selectedPosition <= 0) {
+                            focusSideMenu()
+                            return@setOnKeyInterceptListener true
+                        }
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        if (sideMenuAdapter.selectedCategory == NumCategory.SEARCH) {
+                            if (searchEditText.requestFocus()) {
+                                return@setOnKeyInterceptListener true
+                            }
+                        } else {
+                            if (navigateFeedCategory(direction = -1)) {
+                                return@setOnKeyInterceptListener true
+                            }
+                        }
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        if (navigateFeedCategory(direction = 1)) {
+                            return@setOnKeyInterceptListener true
+                        }
                     }
                 }
             }
@@ -397,13 +424,56 @@ class MainActivity : FragmentActivity() {
         })
     }
 
-    private fun loadCategory(category: NumCategory, preservePosition: Boolean = false) {
+    private val feedCategories = listOf(
+        NumCategory.SEARCH,
+        NumCategory.TRENDING,
+        NumCategory.NEW_RELEASES,
+        NumCategory.ON_THE_AIR,
+        NumCategory.MOVIES,
+        NumCategory.SERIES,
+        NumCategory.FAVORITES,
+        NumCategory.HISTORY
+    )
+
+    private var lastCategoryNavTime = 0L
+
+    private fun navigateFeedCategory(direction: Int): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - lastCategoryNavTime < 250L) {
+            return true
+        }
+        val currentCategory = sideMenuAdapter.selectedCategory
+        val currentIndex = feedCategories.indexOf(currentCategory)
+        if (currentIndex == -1) return false
+
+        val targetIndex = currentIndex + direction
+        if (targetIndex in feedCategories.indices) {
+            lastCategoryNavTime = now
+            val targetCategory = feedCategories[targetIndex]
+            sideMenuAdapter.setSelected(targetCategory)
+            val menuIndex = sideMenuAdapter.items.indexOfFirst { it.category == targetCategory }
+            if (menuIndex != -1) {
+                sideMenuRecycler.smoothScrollToPosition(menuIndex)
+            }
+            loadCategory(targetCategory, clearList = false)
+            return true
+        }
+        return false
+    }
+
+    private fun loadCategory(
+        category: NumCategory,
+        preservePosition: Boolean = false,
+        clearList: Boolean = true
+    ) {
         currentFeedJob?.cancel()
         currentPage = 1
         canLoadMore = true
         isLoadingNextPage = false
         if (!preservePosition) {
-            clearHeroSpotlight()
+            if (clearList) {
+                clearHeroSpotlight()
+            }
             lastOpenedTmdbId = 0L
             lastOpenedPosition = -1
         }
@@ -446,7 +516,9 @@ class MainActivity : FragmentActivity() {
         if (!preservePosition) {
             loadingProgress.visibility = View.VISIBLE
             emptyText.visibility = View.GONE
-            posterAdapter.submitList(emptyList())
+            if (clearList) {
+                posterAdapter.submitList(emptyList())
+            }
         }
 
         currentFeedJob = lifecycleScope.launch {

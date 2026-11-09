@@ -1,6 +1,6 @@
 {
-  "versionCode": 22,
-  "versionName": "1.2.1",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.1/RuVK-Hub-1.2.1.apk",
-  "changelog": "Интеграция со сторонним поиском ATV-RU и системным поиском Android TV, голосовой ввод в активном приложении и поддержка Deep Links."
+  "versionCode": 23,
+  "versionName": "1.2.2",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.2/RuVK-Hub-1.2.2.apk",
+  "changelog": "Быстрое переключение лент главного экрана кнопками Вверх/Вниз на пульте, интеграция со сторонним поиском ATV-RU и системным поиском Android TV."
 }
