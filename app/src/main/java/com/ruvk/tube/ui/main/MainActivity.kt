@@ -2,6 +2,7 @@ package com.ruvk.tube.ui.main
 
 import android.animation.ValueAnimator
 import android.app.AlertDialog
+import android.app.SearchManager
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -105,9 +106,19 @@ class MainActivity : FragmentActivity() {
         setupSideMenu()
         setupPosterGrid()
 
-        val initialCategory = parseTargetCategory(intent) ?: NumCategory.TRENDING
-        sideMenuAdapter.setSelected(initialCategory)
-        loadCategory(initialCategory)
+        val searchQuery = extractSearchQuery(intent)
+        if (!searchQuery.isNullOrBlank()) {
+            sideMenuAdapter.setSelected(NumCategory.SEARCH)
+            loadCategory(NumCategory.SEARCH)
+            searchEditText.setText(searchQuery)
+            searchEditText.setSelection(searchQuery.length)
+            searchJob?.cancel()
+            performSearch(searchQuery)
+        } else {
+            val initialCategory = parseTargetCategory(intent) ?: NumCategory.TRENDING
+            sideMenuAdapter.setSelected(initialCategory)
+            loadCategory(initialCategory)
+        }
 
         checkBackgroundUpdate()
         TvChannelsManager.requestChannelsBrowsable(this)
@@ -116,11 +127,46 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
+        val searchQuery = extractSearchQuery(intent)
+        if (!searchQuery.isNullOrBlank()) {
+            sideMenuAdapter.setSelected(NumCategory.SEARCH)
+            loadCategory(NumCategory.SEARCH)
+            searchEditText.setText(searchQuery)
+            searchEditText.setSelection(searchQuery.length)
+            searchJob?.cancel()
+            performSearch(searchQuery)
+            return
+        }
         val category = parseTargetCategory(intent)
         if (category != null) {
             sideMenuAdapter.setSelected(category)
             loadCategory(category)
         }
+    }
+
+    private fun extractSearchQuery(intent: Intent?): String? {
+        if (intent == null) return null
+        return when (intent.action) {
+            Intent.ACTION_SEARCH -> {
+                intent.getStringExtra(SearchManager.QUERY)
+                    ?: intent.getStringExtra("query")
+            }
+            "android.intent.action.WEB_SEARCH" -> {
+                intent.getStringExtra("query")
+            }
+            Intent.ACTION_VIEW -> {
+                val uri = intent.data
+                if (uri != null) {
+                    uri.getQueryParameter("query")
+                        ?: uri.getQueryParameter("search_query")
+                        ?: uri.getQueryParameter("q")
+                } else null
+            }
+            else -> {
+                intent.getStringExtra("query")
+                    ?: intent.getStringExtra(SearchManager.QUERY)
+            }
+        }?.trim()?.takeIf { it.isNotBlank() }
     }
 
     private fun parseTargetCategory(intent: Intent?): NumCategory? {

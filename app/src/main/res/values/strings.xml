@@ -11,4 +11,5 @@
     <string name="sources_title">Доступные источники</string>
     <string name="searching_sources">Поиск видео в Rutube и VK...</string>
     <string name="no_sources_found">Ничего не найдено</string>
+    <string name="search_suggest_authority">com.ruvk.tube.search</string>
 </resources>

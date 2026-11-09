@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<plugin-capabilities schemaVersion="2" modulePackage="com.ruvk.tube">
+    <voice-capability
+        id="search"
+        version="1"
+        label="Поиск в RuVK"
+        kind="prefix"
+        mode="guide"
+        providerAuthoritySuffix=".search"
+        actionViewUri="ruvk://search"
+        requiredAliases="найди в рувк;найди в ruvk"
+        defaultAliases="найди в рувк;найди в ruvk;поиск в рувк;поиск в ruvk" />
+
+    <voice-capability
+        id="play"
+        version="1"
+        label="Включи в RuVK"
+        kind="prefix"
+        mode="exact-live"
+        providerAuthoritySuffix=".search"
+        requiredAliases="включи в рувк;включи в ruvk"
+        defaultAliases="включи в рувк;включи в ruvk" />
+</plugin-capabilities>

@@ -98,49 +98,7 @@ class DetailsActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_details)
 
-        @Suppress("DEPRECATION")
-        var item = intent.getSerializableExtra(EXTRA_MEDIA_ITEM) as? MediaItem
-        if (item == null) {
-            val id = intent.getLongExtra(EXTRA_MEDIA_ID, 0L)
-            if (id > 0) {
-                val typeStr = intent.getStringExtra(EXTRA_MEDIA_TYPE)
-                val mediaType = if (typeStr == MediaType.TV.name) MediaType.TV else MediaType.MOVIE
-                val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
-                val origTitle = intent.getStringExtra(EXTRA_ORIGINAL_TITLE) ?: ""
-                val overview = intent.getStringExtra(EXTRA_OVERVIEW) ?: ""
-                val poster = intent.getStringExtra(EXTRA_POSTER_URL)
-                val backdrop = intent.getStringExtra(EXTRA_BACKDROP_URL)
-                val year = intent.getIntExtra(EXTRA_YEAR, 0)
-                val rating = intent.getDoubleExtra(EXTRA_RATING, 0.0)
-                val runtime = intent.getIntExtra(EXTRA_RUNTIME, 0)
-                val age = intent.getStringExtra(EXTRA_AGE_RATING)
-                val pos = intent.getLongExtra(EXTRA_WATCH_POSITION, 0L)
-                val dur = intent.getLongExtra(EXTRA_WATCH_DURATION, 0L)
-                val stream = intent.getStringExtra(EXTRA_LAST_STREAM)
-                val sNum = intent.getIntExtra(EXTRA_LAST_SEASON, 0)
-                val eNum = intent.getIntExtra(EXTRA_LAST_EPISODE, 0)
-
-                item = MediaItem(
-                    id = id,
-                    title = title,
-                    originalTitle = origTitle,
-                    overview = overview,
-                    posterUrl = poster,
-                    backdropUrl = backdrop,
-                    releaseDate = if (year > 0) "$year" else "",
-                    year = year,
-                    voteAverage = rating,
-                    runtimeMinutes = runtime,
-                    mediaType = mediaType,
-                    ageRating = age,
-                    watchPositionMs = pos,
-                    watchDurationMs = dur,
-                    lastStreamUrl = stream,
-                    lastSeason = sNum,
-                    lastEpisode = eNum
-                )
-            }
-        }
+        val item = extractMediaItemFromIntent(intent)
         if (item == null) {
             finish()
             return
@@ -165,6 +123,113 @@ class DetailsActivity : FragmentActivity() {
         bindMediaItem(item)
         checkFavoriteStatus(item.id)
         checkHistoryPosition(item.id)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val item = extractMediaItemFromIntent(intent) ?: return
+        mediaItem = item
+        savedStreamUrl = null
+        savedPositionMs = 0L
+        savedSeason = 0
+        savedEpisode = 0
+        currentSeasonNumber = 1
+        currentEpisodeNumber = 1
+        sourcesList = emptyList()
+        sourceAdapter.submitList(emptyList())
+        castAdapter.submitList(emptyList())
+        seasonAdapter.submitList(emptyList())
+        episodeAdapter.submitList(emptyList())
+        bindMediaItem(item)
+        checkFavoriteStatus(item.id)
+        checkHistoryPosition(item.id)
+    }
+
+    private fun extractMediaItemFromIntent(intent: Intent?): MediaItem? {
+        if (intent == null) return null
+        @Suppress("DEPRECATION")
+        val directItem = intent.getSerializableExtra(EXTRA_MEDIA_ITEM) as? MediaItem
+        if (directItem != null) return directItem
+
+        val id = intent.getLongExtra(EXTRA_MEDIA_ID, 0L)
+        if (id > 0) {
+            val typeStr = intent.getStringExtra(EXTRA_MEDIA_TYPE)
+            val mediaType = if (typeStr == MediaType.TV.name) MediaType.TV else MediaType.MOVIE
+            val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
+            val origTitle = intent.getStringExtra(EXTRA_ORIGINAL_TITLE) ?: ""
+            val overview = intent.getStringExtra(EXTRA_OVERVIEW) ?: ""
+            val poster = intent.getStringExtra(EXTRA_POSTER_URL)
+            val backdrop = intent.getStringExtra(EXTRA_BACKDROP_URL)
+            val year = intent.getIntExtra(EXTRA_YEAR, 0)
+            val rating = intent.getDoubleExtra(EXTRA_RATING, 0.0)
+            val runtime = intent.getIntExtra(EXTRA_RUNTIME, 0)
+            val age = intent.getStringExtra(EXTRA_AGE_RATING)
+            val pos = intent.getLongExtra(EXTRA_WATCH_POSITION, 0L)
+            val dur = intent.getLongExtra(EXTRA_WATCH_DURATION, 0L)
+            val stream = intent.getStringExtra(EXTRA_LAST_STREAM)
+            val sNum = intent.getIntExtra(EXTRA_LAST_SEASON, 0)
+            val eNum = intent.getIntExtra(EXTRA_LAST_EPISODE, 0)
+
+            return MediaItem(
+                id = id,
+                title = title,
+                originalTitle = origTitle,
+                overview = overview,
+                posterUrl = poster,
+                backdropUrl = backdrop,
+                releaseDate = if (year > 0) "$year" else "",
+                year = year,
+                voteAverage = rating,
+                runtimeMinutes = runtime,
+                mediaType = mediaType,
+                ageRating = age,
+                watchPositionMs = pos,
+                watchDurationMs = dur,
+                lastStreamUrl = stream,
+                lastSeason = sNum,
+                lastEpisode = eNum
+            )
+        }
+
+        val uri = intent.data
+        if (uri != null) {
+            val idParam = uri.getQueryParameter("tmdbId")
+                ?: uri.getQueryParameter("id")
+                ?: uri.lastPathSegment?.toLongOrNull()?.toString()
+            val uriId = idParam?.toLongOrNull() ?: 0L
+            if (uriId > 0) {
+                val typeStr = uri.getQueryParameter("mediaType")
+                    ?: uri.getQueryParameter("type")
+                    ?: if (uri.host == "tv" || uri.path?.contains("/tv") == true) "TV" else "MOVIE"
+                val mediaType = if (typeStr.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE
+                val title = uri.getQueryParameter("title") ?: intent.getStringExtra(EXTRA_TITLE) ?: ""
+                val origTitle = uri.getQueryParameter("originalTitle") ?: intent.getStringExtra(EXTRA_ORIGINAL_TITLE) ?: ""
+                val overview = uri.getQueryParameter("overview") ?: intent.getStringExtra(EXTRA_OVERVIEW) ?: ""
+                val poster = uri.getQueryParameter("poster") ?: intent.getStringExtra(EXTRA_POSTER_URL)
+                val backdrop = uri.getQueryParameter("backdrop") ?: intent.getStringExtra(EXTRA_BACKDROP_URL)
+                val year = uri.getQueryParameter("year")?.toIntOrNull() ?: intent.getIntExtra(EXTRA_YEAR, 0)
+                val rating = uri.getQueryParameter("rating")?.toDoubleOrNull() ?: intent.getDoubleExtra(EXTRA_RATING, 0.0)
+                val runtime = uri.getQueryParameter("runtime")?.toIntOrNull() ?: intent.getIntExtra(EXTRA_RUNTIME, 0)
+                val age = uri.getQueryParameter("age") ?: intent.getStringExtra(EXTRA_AGE_RATING)
+
+                return MediaItem(
+                    id = uriId,
+                    title = title,
+                    originalTitle = origTitle,
+                    overview = overview,
+                    posterUrl = poster,
+                    backdropUrl = backdrop,
+                    releaseDate = if (year > 0) "$year" else "",
+                    year = year,
+                    voteAverage = rating,
+                    runtimeMinutes = runtime,
+                    mediaType = mediaType,
+                    ageRating = age
+                )
+            }
+        }
+        return null
     }
 
     override fun onResume() {
@@ -459,7 +524,7 @@ class DetailsActivity : FragmentActivity() {
             transformations(RoundedCornersTransformation(radiusPx))
         }
 
-        titleText.text = item.title
+        titleText.text = if (item.title.isNotBlank()) item.title else "Загрузка..."
 
         if (item.originalTitle.isNotBlank() && item.originalTitle != item.title) {
             originalTitleText.visibility = View.VISIBLE
@@ -658,7 +723,11 @@ class DetailsActivity : FragmentActivity() {
                         RuVkTubeApp.instance.tmdbRepository.getTvDetails(item.id)
                     }
                 }
+                val wasTitleBlank = titleText.text == "Загрузка..." || titleText.text.isNullOrBlank()
                 mediaItem = detailed
+                if (wasTitleBlank) {
+                    bindMediaItem(detailed)
+                }
 
                 if (!detailed.ageRating.isNullOrBlank()) {
                     badgeAge.visibility = View.VISIBLE

@@ -1,6 +1,6 @@
 {
-  "versionCode": 21,
-  "versionName": "1.2.0",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.0/RuVK-Hub-1.2.0.apk",
-  "changelog": "Расширенные карточки каналов (возрастной рейтинг, оценка, год, длительность, 3 строки описания) и интеграция с системным каналом Play Next."
+  "versionCode": 22,
+  "versionName": "1.2.1",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.1/RuVK-Hub-1.2.1.apk",
+  "changelog": "Интеграция со сторонним поиском ATV-RU и системным поиском Android TV, голосовой ввод в активном приложении и поддержка Deep Links."
 }

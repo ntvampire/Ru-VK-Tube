@@ -24,6 +24,11 @@
         android:theme="@style/Theme.RuVkTube"
         android:usesCleartextTraffic="true">
 
+        <!-- Декларация возможностей для ATV-RU Поиск (TVVoiceSearch) -->
+        <meta-data
+            android:name="com.tvvoicesearch.plugin.CAPABILITIES"
+            android:resource="@xml/plugin_capabilities" />
+
         <activity
             android:name=".ui.main.MainActivity"
             android:exported="true"
@@ -40,6 +45,27 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- Deep link для перехода в поиск: ruvk://search?query=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="search"
+                    android:scheme="ruvk" />
+            </intent-filter>
+            <!-- Поддержка системного голосового поиска Android TV и Foreground Redirect (ATV-RU Способ 3) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.searchable"
+                android:resource="@xml/searchable" />
         </activity>
 
         <activity
@@ -50,7 +76,22 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- Deep link для прямого открытия карточки: ruvk://details?tmdbId=...&mediaType=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="details"
+                    android:scheme="ruvk" />
+            </intent-filter>
         </activity>
+
+        <!-- Провайдер поисковых подсказок для Android TV Search и ATV-RU Поиск -->
+        <provider
+            android:name=".search.SearchSuggestProvider"
+            android:authorities="${applicationId}.search"
+            android:exported="true" />
 
         <receiver
             android:name=".channels.TvLauncherReceiver"
