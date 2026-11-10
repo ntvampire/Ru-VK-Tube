@@ -397,6 +397,13 @@ object TvChannelsManager {
                 val descriptionText = buildProgramDescription(mediaItem)
                 val longDescText = buildProgramLongDescription(mediaItem)
 
+                val isEpisode = isTv && sNum > 0 && eNum > 0
+                val programType = when {
+                    isEpisode -> TvContractCompat.PreviewPrograms.TYPE_TV_EPISODE
+                    isTv -> TvContractCompat.PreviewPrograms.TYPE_TV_SERIES
+                    else -> TvContractCompat.PreviewPrograms.TYPE_MOVIE
+                }
+
                 programBuilder
                     .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
                     .setLastEngagementTimeUtcMillis(h.updatedAt)
@@ -404,11 +411,40 @@ object TvChannelsManager {
                     .setDescription(descriptionText)
                     .setLongDescription(longDescText)
                     .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
-                    .setType(if (isTv) TvContractCompat.PreviewPrograms.TYPE_TV_SERIES else TvContractCompat.PreviewPrograms.TYPE_MOVIE)
+                    .setType(programType)
                     .setIntentUri(programUri)
                     .setInternalProviderId(internalId)
-                    .setLastPlaybackPositionMillis(posMs.toInt())
-                    .setDurationMillis(if (durMs > 0L) durMs.toInt() else 0)
+
+                if (isEpisode) {
+                    programBuilder.setSeasonNumber(sNum)
+                    programBuilder.setEpisodeNumber(eNum)
+                }
+
+                val duration = when {
+                    durMs > 0L -> durMs.toInt()
+                    mediaItem.runtimeMinutes > 0 -> mediaItem.runtimeMinutes * 60_000
+                    else -> 0
+                }
+                if (duration > 0) {
+                    programBuilder.setDurationMillis(duration)
+                }
+                if (posMs > 0L) {
+                    programBuilder.setLastPlaybackPositionMillis(posMs.toInt())
+                }
+
+                if (mediaItem.voteAverage > 0.0) {
+                    programBuilder.setReviewRating(String.format(Locale.US, "%.1f", mediaItem.voteAverage))
+                    programBuilder.setReviewRatingStyle(TvContractCompat.PreviewPrograms.REVIEW_RATING_STYLE_STARS)
+                }
+
+                val releaseDateStr = when {
+                    mediaItem.year > 0 -> mediaItem.year.toString()
+                    mediaItem.releaseDate.isNotBlank() -> mediaItem.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
+                    else -> null
+                }
+                if (releaseDateStr != null) {
+                    programBuilder.setReleaseDate(releaseDateStr)
+                }
 
                 if (imageUri != null) {
                     programBuilder.setPosterArtUri(Uri.parse(imageUri))
@@ -448,7 +484,7 @@ object TvChannelsManager {
         }
     }
 
-    fun buildMetadataSubtitle(item: MediaItem): String {
+    fun buildMetadataSubtitle(item: MediaItem, includeDuration: Boolean = false): String {
         val meta = mutableListOf<String>()
 
         val episodeInfo = if (item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0) {
@@ -468,14 +504,16 @@ object TvChannelsManager {
             meta.add(String.format(Locale.US, "★ %.1f", item.voteAverage))
         }
 
-        // 3. Длительность: 124 мин
-        val runtimeMinutes = when {
-            item.runtimeMinutes > 0 -> item.runtimeMinutes
-            item.watchDurationMs > 0L -> (item.watchDurationMs / 60_000L).toInt()
-            else -> 0
-        }
-        if (runtimeMinutes > 0) {
-            meta.add("$runtimeMinutes мин")
+        // 3. Длительность: опционально, только если явно запрошено (в карточках каналов передается системно через durationMillis)
+        if (includeDuration) {
+            val runtimeMinutes = when {
+                item.runtimeMinutes > 0 -> item.runtimeMinutes
+                item.watchDurationMs > 0L -> (item.watchDurationMs / 60_000L).toInt()
+                else -> 0
+            }
+            if (runtimeMinutes > 0) {
+                meta.add("$runtimeMinutes мин")
+            }
         }
 
         // 4. Год: 2024
@@ -630,25 +668,59 @@ object TvChannelsManager {
             val descriptionText = buildProgramDescription(item)
             val longDescText = buildProgramLongDescription(item)
 
+            val isEpisode = item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0
+            val programType = when {
+                isEpisode -> TvContractCompat.PreviewPrograms.TYPE_TV_EPISODE
+                item.mediaType == MediaType.TV -> TvContractCompat.PreviewPrograms.TYPE_TV_SERIES
+                else -> TvContractCompat.PreviewPrograms.TYPE_MOVIE
+            }
+
             programBuilder
                 .setChannelId(channelId)
                 .setTitle(item.title)
                 .setDescription(descriptionText)
                 .setLongDescription(longDescText)
                 .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
-                .setType(if (item.mediaType == MediaType.TV) TvContractCompat.PreviewPrograms.TYPE_TV_SERIES else TvContractCompat.PreviewPrograms.TYPE_MOVIE)
+                .setType(programType)
                 .setIntentUri(programUri)
                 .setInternalProviderId(internalId)
                 .setWeight(weight)
+
+            if (isEpisode) {
+                programBuilder.setSeasonNumber(item.lastSeason)
+                programBuilder.setEpisodeNumber(item.lastEpisode)
+            }
 
             if (imageUri != null) {
                 programBuilder.setPosterArtUri(Uri.parse(imageUri))
             }
 
-            if (item.watchPositionMs > 5_000L && item.watchDurationMs > 0L) {
+            val duration = when {
+                item.watchDurationMs > 0L -> item.watchDurationMs.toInt()
+                item.runtimeMinutes > 0 -> item.runtimeMinutes * 60_000
+                else -> 0
+            }
+            if (duration > 0) {
+                programBuilder.setDurationMillis(duration)
+            }
+
+            if (item.watchPositionMs > 5_000L && duration > 0) {
                 programBuilder.setLastPlaybackPositionMillis(item.watchPositionMs.toInt())
-                programBuilder.setDurationMillis(item.watchDurationMs.toInt())
                 programBuilder.setInteractionType(TvContractCompat.PreviewPrograms.INTERACTION_TYPE_VIEWS)
+            }
+
+            if (item.voteAverage > 0.0) {
+                programBuilder.setReviewRating(String.format(Locale.US, "%.1f", item.voteAverage))
+                programBuilder.setReviewRatingStyle(TvContractCompat.PreviewPrograms.REVIEW_RATING_STYLE_STARS)
+            }
+
+            val releaseDateStr = when {
+                item.year > 0 -> item.year.toString()
+                item.releaseDate.isNotBlank() -> item.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
+                else -> null
+            }
+            if (releaseDateStr != null) {
+                programBuilder.setReleaseDate(releaseDateStr)
             }
 
             try {
