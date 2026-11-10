@@ -2,6 +2,7 @@ package com.ruvk.tube.channels
 
 import android.app.Activity
 import android.content.ComponentName
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -313,6 +314,22 @@ object TvChannelsManager {
                 Log.w(TAG, "Failed to query WatchNext programs", e)
             }
 
+            // Сбрасываем остаточный review_rating в системной БД, чтобы лаунчер не рисовал символьные звёзды
+            try {
+                val clearRatingValues = ContentValues().apply {
+                    putNull(TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING)
+                    putNull(TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING_STYLE)
+                }
+                context.contentResolver.update(
+                    TvContractCompat.WatchNextPrograms.CONTENT_URI,
+                    clearRatingValues,
+                    "${TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING} IS NOT NULL",
+                    null
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to clear legacy review ratings for WatchNext", e)
+            }
+
             val existingMap = existingPrograms.associateBy { it.internalProviderId }.toMutableMap()
 
             for (h in inProgressEntities) {
@@ -385,11 +402,9 @@ object TvChannelsManager {
                     country = countryStr
                 )
 
-                val programBuilder = if (existing != null) {
-                    WatchNextProgram.Builder(existing)
-                } else {
-                    WatchNextProgram.Builder()
-                }
+                val programBuilder = WatchNextProgram.Builder()
+                programBuilder.setReviewRating(null)
+                programBuilder.setReviewRatingStyle(-1)
 
                 val programUri = buildProgramIntentUri(context, mediaItem)
                 val imageUri = mediaItem.posterUrl?.takeIf { it.isNotBlank() }
@@ -652,6 +667,22 @@ object TvChannelsManager {
             Log.w(TAG, "Failed to query existing programs for channel $channelId", e)
         }
 
+        // Сбрасываем остаточный review_rating в системной БД, чтобы лаунчер не рисовал символьные звёзды
+        try {
+            val clearRatingValues = ContentValues().apply {
+                putNull(TvContractCompat.PreviewPrograms.COLUMN_REVIEW_RATING)
+                putNull(TvContractCompat.PreviewPrograms.COLUMN_REVIEW_RATING_STYLE)
+            }
+            context.contentResolver.update(
+                uri,
+                clearRatingValues,
+                "${TvContractCompat.PreviewPrograms.COLUMN_REVIEW_RATING} IS NOT NULL",
+                null
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear legacy review ratings for channel $channelId", e)
+        }
+
         val existingMap = existingPrograms.associateBy { it.internalProviderId }.toMutableMap()
         val total = items.size
 
@@ -660,11 +691,9 @@ object TvChannelsManager {
             val weight = (total - index) * 10
             val existing = existingMap.remove(internalId)
 
-            val programBuilder = if (existing != null) {
-                PreviewProgram.Builder(existing)
-            } else {
-                PreviewProgram.Builder()
-            }
+            val programBuilder = PreviewProgram.Builder()
+            programBuilder.setReviewRating(null)
+            programBuilder.setReviewRatingStyle(-1)
 
             val programUri = buildProgramIntentUri(context, item)
             val imageUri = item.posterUrl?.takeIf { it.isNotBlank() }
