@@ -432,11 +432,6 @@ object TvChannelsManager {
                     programBuilder.setLastPlaybackPositionMillis(posMs.toInt())
                 }
 
-                if (mediaItem.voteAverage > 0.0) {
-                    programBuilder.setReviewRating(String.format(Locale.US, "%.1f", mediaItem.voteAverage))
-                    programBuilder.setReviewRatingStyle(TvContractCompat.PreviewPrograms.REVIEW_RATING_STYLE_STARS)
-                }
-
                 val releaseDateStr = when {
                     mediaItem.year > 0 -> mediaItem.year.toString()
                     mediaItem.releaseDate.isNotBlank() -> mediaItem.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
@@ -484,14 +479,21 @@ object TvChannelsManager {
         }
     }
 
-    fun buildMetadataSubtitle(item: MediaItem, includeDuration: Boolean = false): String {
+    fun buildMetadataSubtitle(
+        item: MediaItem,
+        includeDuration: Boolean = false,
+        includeEpisode: Boolean = false,
+        includeYear: Boolean = false
+    ): String {
         val meta = mutableListOf<String>()
 
-        val episodeInfo = if (item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0) {
-            "S${item.lastSeason}E${item.lastEpisode}"
-        } else null
-        if (episodeInfo != null) {
-            meta.add(episodeInfo)
+        if (includeEpisode) {
+            val episodeInfo = if (item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0) {
+                "S${item.lastSeason}E${item.lastEpisode}"
+            } else null
+            if (episodeInfo != null) {
+                meta.add(episodeInfo)
+            }
         }
 
         // 1. Возрастной рейтинг: 18+, 16+, 12+, 6+, 0+
@@ -504,7 +506,7 @@ object TvChannelsManager {
             meta.add(String.format(Locale.US, "★ %.1f", item.voteAverage))
         }
 
-        // 3. Длительность: опционально, только если явно запрошено (в карточках каналов передается системно через durationMillis)
+        // 3. Длительность: опционально (в карточках каналов передается системно через durationMillis)
         if (includeDuration) {
             val runtimeMinutes = when {
                 item.runtimeMinutes > 0 -> item.runtimeMinutes
@@ -516,14 +518,16 @@ object TvChannelsManager {
             }
         }
 
-        // 4. Год: 2024
-        val yearStr = when {
-            item.year > 0 -> item.year.toString()
-            item.releaseDate.isNotBlank() -> item.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
-            else -> null
-        }
-        if (yearStr != null) {
-            meta.add(yearStr)
+        // 4. Год: опционально (в карточках каналов передается системно через releaseDate)
+        if (includeYear) {
+            val yearStr = when {
+                item.year > 0 -> item.year.toString()
+                item.releaseDate.isNotBlank() -> item.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
+                else -> null
+            }
+            if (yearStr != null) {
+                meta.add(yearStr)
+            }
         }
 
         // 5. Страна
@@ -707,11 +711,6 @@ object TvChannelsManager {
             if (item.watchPositionMs > 5_000L && duration > 0) {
                 programBuilder.setLastPlaybackPositionMillis(item.watchPositionMs.toInt())
                 programBuilder.setInteractionType(TvContractCompat.PreviewPrograms.INTERACTION_TYPE_VIEWS)
-            }
-
-            if (item.voteAverage > 0.0) {
-                programBuilder.setReviewRating(String.format(Locale.US, "%.1f", item.voteAverage))
-                programBuilder.setReviewRatingStyle(TvContractCompat.PreviewPrograms.REVIEW_RATING_STYLE_STARS)
             }
 
             val releaseDateStr = when {
