@@ -7,6 +7,14 @@ import android.view.WindowManager
 object DeviceCapabilityHelper {
 
     /**
+     * Безопасное максимальное разрешение для кодека H.264 (AVC) на Android TV.
+     * По спецификации Google CDD аппаратные блоки декодеров AVC на ТВ ограничены 1080p60.
+     * Потоки 4K AVC вызывают дедлок драйвера VPU и переполнение DPB-буферов чипсета ТВ.
+     */
+    const val MAX_SAFE_AVC_WIDTH = 1920
+    const val MAX_SAFE_AVC_HEIGHT = 1080
+
+    /**
      * Возвращает максимальную высоту экрана устройства (2160 для 4K, 1080 для FHD, 720 для HD).
      */
     fun getMaxDisplayHeight(context: Context): Int {

@@ -33,6 +33,8 @@ class InternalPlayerActivity : AppCompatActivity() {
     private lateinit var bufferingBar: ProgressBar
     private lateinit var dimOverlay: View
     private var exoPlayer: ExoPlayer? = null
+    private var trackSelector: androidx.media3.exoplayer.trackselection.DefaultTrackSelector? = null
+    private var hasAppliedSafeConstraints = false
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
     private var isDimmed = false
@@ -105,8 +107,16 @@ class InternalPlayerActivity : AppCompatActivity() {
         val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
             .setDataSourceFactory(httpDataSourceFactory)
 
-        exoPlayer = ExoPlayer.Builder(this)
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+
+        trackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(this)
+        hasAppliedSafeConstraints = false
+
+        exoPlayer = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setTrackSelector(trackSelector!!)
             .build().apply {
             val mediaItem = MediaItem.fromUri(streamUrl)
             if (startPositionMs > 5_000L && !isTrailer) {
@@ -120,6 +130,11 @@ class InternalPlayerActivity : AppCompatActivity() {
                 setMediaItem(mediaItem)
             }
             prepare()
+
+            // Гарантированно фиксируем фильм в истории сразу при открытии плеера
+            if (!isTrailer && tmdbId > 0) {
+                savePlaybackPositionInternal(isInitial = true)
+            }
 
             if (startPositionMs == 0L && !isTrailer && tmdbId > 0) {
                 lifecycleScope.launch {
@@ -149,6 +164,10 @@ class InternalPlayerActivity : AppCompatActivity() {
                     setupAudioEffects(audioSessionId)
                 }
 
+                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                    checkAndApplySafeVideoConstraints(tracks)
+                }
+
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         Player.STATE_BUFFERING -> bufferingBar.visibility = View.VISIBLE
@@ -169,7 +188,7 @@ class InternalPlayerActivity : AppCompatActivity() {
                         startProgressTracking()
                     } else {
                         stopProgressTracking()
-                        savePlaybackPosition()
+                        savePlaybackPositionInternal()
                         startPauseDimTimer()
                     }
                 }
@@ -189,6 +208,31 @@ class InternalPlayerActivity : AppCompatActivity() {
         playerView.player = exoPlayer
     }
 
+    private fun checkAndApplySafeVideoConstraints(tracks: androidx.media3.common.Tracks) {
+        if (hasAppliedSafeConstraints) return
+        val selector = trackSelector ?: return
+
+        for (group in tracks.groups) {
+            if (group.type == androidx.media3.common.C.TRACK_TYPE_VIDEO) {
+                for (i in 0 until group.length) {
+                    val format = group.getTrackFormat(i)
+                    val mime = format.sampleMimeType ?: ""
+                    val isAvc = mime.contains("avc", ignoreCase = true) || mime.contains("h264", ignoreCase = true)
+                    // H.264 (AVC) на ТВ-чипах сертифицирован только до 1080p60.
+                    // 4K AVC приводит к переполнению DPB и мертвому зависанию VPU ядра ТВ.
+                    if (isAvc && (format.height > DeviceCapabilityHelper.MAX_SAFE_AVC_HEIGHT || format.width > DeviceCapabilityHelper.MAX_SAFE_AVC_WIDTH)) {
+                        android.util.Log.w("InternalPlayer", "Limiting AVC (H.264) track to 1080p to prevent TV VPU kernel deadlock (${format.width}x${format.height})")
+                        hasAppliedSafeConstraints = true
+                        selector.parameters = selector.parameters.buildUpon()
+                            .setMaxVideoSize(DeviceCapabilityHelper.MAX_SAFE_AVC_WIDTH, DeviceCapabilityHelper.MAX_SAFE_AVC_HEIGHT)
+                            .build()
+                        return
+                    }
+                }
+            }
+        }
+    }
+
     private var progressTrackingJob: Job? = null
 
     private fun startProgressTracking() {
@@ -197,7 +241,7 @@ class InternalPlayerActivity : AppCompatActivity() {
             while (isActive) {
                 delay(5000)
                 if (exoPlayer?.isPlaying == true) {
-                    savePlaybackPosition()
+                    savePlaybackPositionInternal()
                 }
             }
         }
@@ -348,82 +392,102 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        super.onPause()
         cancelPauseDimTimer()
         stopProgressTracking()
-        savePlaybackPosition()
+        savePlaybackPositionInternal()
         exoPlayer?.pause()
+        super.onPause()
     }
 
     override fun onStop() {
-        super.onStop()
         cancelPauseDimTimer()
-        savePlaybackPosition()
+        stopProgressTracking()
+        savePlaybackPositionInternal()
+        exoPlayer?.pause()
+        super.onStop()
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         cancelPauseDimTimer()
         stopProgressTracking()
-        savePlaybackPosition()
+        savePlaybackPositionInternal(isBlocking = true)
         releaseAudioEffects()
+        // Отвязываем SurfaceView от ExoPlayer ДО вызова stop/release и super.onDestroy,
+        // чтобы нативный дисплейный слой корректно освободил буферы и не вызвал дедлок ядра VPU ТВ
+        playerView.player = null
+        exoPlayer?.stop()
         exoPlayer?.release()
         exoPlayer = null
+        trackSelector = null
+        super.onDestroy()
     }
 
-    private fun savePlaybackPosition() {
-        val player = exoPlayer ?: return
+    private fun savePlaybackPositionInternal(isInitial: Boolean = false, isBlocking: Boolean = false) {
+        val player = exoPlayer
         if (isTrailer || tmdbId == 0L) return
 
-        val position = player.currentPosition
-        val duration = player.duration
+        val position = if (isInitial) startPositionMs else (player?.currentPosition ?: startPositionMs)
+        val duration = player?.duration ?: 0L
         val validPos = if (position > 0) position else 0L
         val validDur = if (duration > 0) duration else 0L
 
-        // Сохраняем в историю если воспроизведение длилось от 3 секунд
-        if (validPos > 3_000L || validDur > 60_000L) {
-            val now = System.currentTimeMillis()
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    if (mediaType == "TV" && season > 0 && episode > 0) {
-                        RuVkTubeApp.instance.database.episodeProgressDao().saveProgress(
-                            EpisodeProgressEntity(
-                                tmdbId = tmdbId,
-                                season = season,
-                                episode = episode,
-                                positionMs = validPos,
-                                durationMs = validDur,
-                                lastStreamUrl = streamUrl,
-                                updatedAt = now
-                            )
-                        )
-                    }
-
-                    RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
-                        HistoryEntity(
+        val now = System.currentTimeMillis()
+        val action: suspend () -> Unit = {
+            try {
+                if (mediaType == "TV" && season > 0 && episode > 0) {
+                    RuVkTubeApp.instance.database.episodeProgressDao().saveProgress(
+                        EpisodeProgressEntity(
                             tmdbId = tmdbId,
-                            title = if (movieTitle.isNotBlank()) movieTitle else title,
-                            posterUrl = posterUrl,
-                            backdropUrl = backdropUrl,
-                            mediaType = mediaType,
-                            positionMs = validPos,
-                            durationMs = validDur,
-                            year = year,
-                            rating = rating,
-                            overview = overview,
                             season = season,
                             episode = episode,
+                            positionMs = validPos,
+                            durationMs = validDur,
                             lastStreamUrl = streamUrl,
-                            updatedAt = now,
-                            country = country
+                            updatedAt = now
                         )
                     )
-                    // Храним только последние 30 записей истории
-                    RuVkTubeApp.instance.database.historyDao().trimToLast30()
-                    com.ruvk.tube.channels.TvChannelsManager.syncHistoryChannel(applicationContext)
-                } catch (e: Exception) {
-                    android.util.Log.e("InternalPlayer", "Failed to save playback position", e)
                 }
+
+                RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
+                    HistoryEntity(
+                        tmdbId = tmdbId,
+                        title = if (movieTitle.isNotBlank()) movieTitle else title,
+                        posterUrl = posterUrl,
+                        backdropUrl = backdropUrl,
+                        mediaType = mediaType,
+                        positionMs = validPos,
+                        durationMs = validDur,
+                        year = year,
+                        rating = rating,
+                        overview = overview,
+                        season = season,
+                        episode = episode,
+                        lastStreamUrl = streamUrl,
+                        updatedAt = now,
+                        country = country
+                    )
+                )
+                // Храним только последние 30 записей истории
+                RuVkTubeApp.instance.database.historyDao().trimToLast30()
+                com.ruvk.tube.channels.TvChannelsManager.syncHistoryChannel(applicationContext)
+            } catch (e: Exception) {
+                android.util.Log.e("InternalPlayer", "Failed to save playback position", e)
+            }
+        }
+
+        if (isBlocking) {
+            try {
+                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                    kotlinx.coroutines.withTimeoutOrNull(600L) {
+                        action()
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("InternalPlayer", "Blocking save failed", e)
+            }
+        } else {
+            CoroutineScope(Dispatchers.IO).launch {
+                action()
             }
         }
     }

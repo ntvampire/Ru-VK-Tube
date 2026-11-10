@@ -97,7 +97,7 @@ class SearchCoordinator(
                 val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
                 val quality = detectRutubeQuality(streamUrl, lowerTitle)
                 val voiceover = detectVoiceover(lowerTitle)
-                val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight)
+                val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight, VideoPlatform.RUTUBE)
 
                 if (rutubeResults.none { it.streamUrl == streamUrl }) {
                     rutubeResults.add(
@@ -141,7 +141,7 @@ class SearchCoordinator(
 
                 val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
                 val voiceover = detectVoiceover(lowerTitle)
-                val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight)
+                val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight, VideoPlatform.VK)
 
                 if (vkResults.none { it.streamUrl == streamUrl }) {
                     vkResults.add(
@@ -221,7 +221,7 @@ class SearchCoordinator(
                 val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
                 val quality = detectRutubeQuality(streamUrl, lowerTitle)
                 val voiceover = detectVoiceover(lowerTitle)
-                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight)
+                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.RUTUBE)
 
                 if (rutubeResults.none { it.streamUrl == streamUrl }) {
                     rutubeResults.add(
@@ -265,7 +265,7 @@ class SearchCoordinator(
 
                 val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
                 val voiceover = detectVoiceover(lowerTitle)
-                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight)
+                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.VK)
 
                 if (vkResults.none { it.streamUrl == streamUrl }) {
                     vkResults.add(
@@ -333,7 +333,8 @@ class SearchCoordinator(
         episodeNumber: Int,
         quality: String,
         voiceover: String?,
-        maxSupportedHeight: Int
+        maxSupportedHeight: Int,
+        platform: VideoPlatform
     ): Int {
         var score = 0
         val sPadded = seasonNumber.toString().padStart(2, '0')
@@ -349,7 +350,12 @@ class SearchCoordinator(
 
         if (voiceover != null) score += 30
 
-        val qualityHeight = DeviceCapabilityHelper.qualityToHeight(quality)
+        // Для ВКонтакте 4K жмётся исключительно в 8-бит H.264 без тономаппинга (тёмная картинка), поэтому не завышаем скор выше 1080p
+        val qualityHeight = if (platform == VideoPlatform.VK && quality == "4K") {
+            DeviceCapabilityHelper.MAX_SAFE_AVC_HEIGHT
+        } else {
+            DeviceCapabilityHelper.qualityToHeight(quality)
+        }
         if (qualityHeight <= maxSupportedHeight) {
             score += (qualityHeight / 10)
         } else {
@@ -391,7 +397,7 @@ class SearchCoordinator(
 
                 val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
                 val quality = detectRutubeQuality(streamUrl, lowerTitle)
-                val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight)
+                val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight, VideoPlatform.RUTUBE)
 
                 rutubeTrailers.add(
                     VideoSource(
@@ -422,7 +428,7 @@ class SearchCoordinator(
                     ?: continue
 
                 val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
-                val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight)
+                val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight, VideoPlatform.VK)
 
                 vkTrailers.add(
                     VideoSource(
@@ -541,7 +547,8 @@ class SearchCoordinator(
         year: Int,
         quality: String,
         voiceover: String?,
-        maxSupportedHeight: Int
+        maxSupportedHeight: Int,
+        platform: VideoPlatform
     ): Int {
         var score = 0
 
@@ -552,7 +559,12 @@ class SearchCoordinator(
         if (voiceover != null) score += 30
 
         // 3. Автовыбор по разрешению устройства
-        val qualityHeight = DeviceCapabilityHelper.qualityToHeight(quality)
+        // Для ВКонтакте 4K жмётся исключительно в 8-бит H.264 без тономаппинга (тёмная картинка), поэтому не завышаем скор выше 1080p
+        val qualityHeight = if (platform == VideoPlatform.VK && quality == "4K") {
+            DeviceCapabilityHelper.MAX_SAFE_AVC_HEIGHT
+        } else {
+            DeviceCapabilityHelper.qualityToHeight(quality)
+        }
         if (qualityHeight <= maxSupportedHeight) {
             score += (qualityHeight / 10)
         } else {
