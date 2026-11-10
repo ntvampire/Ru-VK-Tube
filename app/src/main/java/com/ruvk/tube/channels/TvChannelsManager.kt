@@ -394,15 +394,15 @@ object TvChannelsManager {
                 val programUri = buildProgramIntentUri(context, mediaItem)
                 val imageUri = mediaItem.posterUrl?.takeIf { it.isNotBlank() }
                     ?: mediaItem.backdropUrl?.takeIf { it.isNotBlank() }
-                val subtitle = buildMetadataSubtitle(mediaItem)
-                val overviewText = mediaItem.overview.takeIf { it.isNotBlank() } ?: subtitle
+                val descriptionText = buildProgramDescription(mediaItem)
+                val longDescText = buildProgramLongDescription(mediaItem)
 
                 programBuilder
                     .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
                     .setLastEngagementTimeUtcMillis(h.updatedAt)
                     .setTitle(mediaItem.title)
-                    .setDescription(subtitle.ifBlank { overviewText })
-                    .setLongDescription(overviewText)
+                    .setDescription(descriptionText)
+                    .setLongDescription(longDescText)
                     .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
                     .setType(if (isTv) TvContractCompat.PreviewPrograms.TYPE_TV_SERIES else TvContractCompat.PreviewPrograms.TYPE_MOVIE)
                     .setIntentUri(programUri)
@@ -497,6 +497,26 @@ object TvChannelsManager {
     }
 
     fun buildProgramTitle(item: MediaItem): String = item.title
+
+    fun buildProgramDescription(item: MediaItem): String {
+        val subtitle = buildMetadataSubtitle(item)
+        val overview = item.overview.trim()
+        return when {
+            subtitle.isNotBlank() && overview.isNotBlank() -> "$subtitle\n$overview"
+            subtitle.isNotBlank() -> subtitle
+            else -> overview
+        }
+    }
+
+    fun buildProgramLongDescription(item: MediaItem): String {
+        val subtitle = buildMetadataSubtitle(item)
+        val overview = item.overview.trim()
+        return when {
+            subtitle.isNotBlank() && overview.isNotBlank() -> "$subtitle\n\n$overview"
+            overview.isNotBlank() -> overview
+            else -> subtitle
+        }
+    }
 
     private fun getOrCreateChannel(
         context: Context,
@@ -607,14 +627,14 @@ object TvChannelsManager {
             val programUri = buildProgramIntentUri(context, item)
             val imageUri = item.posterUrl?.takeIf { it.isNotBlank() }
                 ?: item.backdropUrl?.takeIf { it.isNotBlank() }
-            val subtitle = buildMetadataSubtitle(item)
-            val overviewText = item.overview.takeIf { it.isNotBlank() } ?: subtitle
+            val descriptionText = buildProgramDescription(item)
+            val longDescText = buildProgramLongDescription(item)
 
             programBuilder
                 .setChannelId(channelId)
                 .setTitle(item.title)
-                .setDescription(subtitle.ifBlank { overviewText })
-                .setLongDescription(overviewText)
+                .setDescription(descriptionText)
+                .setLongDescription(longDescText)
                 .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
                 .setType(if (item.mediaType == MediaType.TV) TvContractCompat.PreviewPrograms.TYPE_TV_SERIES else TvContractCompat.PreviewPrograms.TYPE_MOVIE)
                 .setIntentUri(programUri)
