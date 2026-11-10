@@ -29,6 +29,11 @@ data class TmdbMovieDto(
     @SerializedName("genre_ids") val genreIds: List<Int>? = null
 )
 
+data class TmdbProductionCountryDto(
+    @SerializedName("iso_3166_1") val iso: String?,
+    @SerializedName("name") val name: String?
+)
+
 data class TmdbMovieDetailsDto(
     @SerializedName("id") val id: Long,
     @SerializedName("title") val title: String?,
@@ -40,6 +45,8 @@ data class TmdbMovieDetailsDto(
     @SerializedName("runtime") val runtime: Int?,
     @SerializedName("vote_average") val voteAverage: Double?,
     @SerializedName("imdb_id") val imdbId: String?,
+    @SerializedName("origin_country") val originCountry: List<String>? = null,
+    @SerializedName("production_countries") val productionCountries: List<TmdbProductionCountryDto>? = null,
     @SerializedName("release_dates") val releaseDates: TmdbReleaseDatesContainer?,
     @SerializedName("credits") val credits: TmdbCreditsDto? = null
 )
@@ -56,6 +63,8 @@ data class TmdbTvDetailsDto(
     @SerializedName("vote_average") val voteAverage: Double?,
     @SerializedName("number_of_seasons") val numberOfSeasons: Int?,
     @SerializedName("number_of_episodes") val numberOfEpisodes: Int?,
+    @SerializedName("origin_country") val originCountry: List<String>? = null,
+    @SerializedName("production_countries") val productionCountries: List<TmdbProductionCountryDto>? = null,
     @SerializedName("content_ratings") val contentRatings: TmdbContentRatingsContainer?,
     @SerializedName("credits") val credits: TmdbCreditsDto? = null,
     @SerializedName("seasons") val seasons: List<TmdbSeasonDto>? = null

@@ -31,7 +31,8 @@ data class MediaItem(
     val cast: List<CastMember> = emptyList(),
     val seasons: List<TvSeason> = emptyList(),
     val lastSeason: Int = 0,
-    val lastEpisode: Int = 0
+    val lastEpisode: Int = 0,
+    val country: String? = null
 ) : Serializable
 
 data class TvSeason(

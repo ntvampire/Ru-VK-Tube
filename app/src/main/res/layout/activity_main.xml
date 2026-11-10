@@ -102,13 +102,32 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- 3.2. Название текущей подборки (В тренде, Новинки, В эфире, Фильмы, Сериалы, Избранное, История) -->
+    <TextView
+        android:id="@+id/section_header"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="92dp"
+        android:layout_marginTop="32dp"
+        android:shadowColor="#CC000000"
+        android:shadowDx="0"
+        android:shadowDy="2"
+        android:shadowRadius="6"
+        android:textColor="@color/text_primary"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:visibility="visible"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="В тренде" />
+
     <!-- 4. Информационный блок текущего фильма (Spotlight) -->
     <LinearLayout
         android:id="@+id/info_container"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="92dp"
-        android:layout_marginTop="36dp"
+        android:layout_marginTop="8dp"
         android:layout_marginEnd="64dp"
         android:layout_marginBottom="16dp"
         android:gravity="bottom"
@@ -116,7 +135,7 @@
         app:layout_constraintBottom_toTopOf="@+id/poster_grid_view"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/section_header"
         app:layout_constraintWidth_max="740dp">
 
         <!-- Название фильма -->
@@ -193,6 +212,16 @@
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp"
                 tools:text="2014" />
+
+            <TextView
+                android:id="@+id/badge_country"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:visibility="gone"
+                tools:text="США, Великобритания" />
 
             <TextView
                 android:id="@+id/badge_runtime"

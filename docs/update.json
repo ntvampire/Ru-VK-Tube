@@ -1,6 +1,6 @@
 {
-  "versionCode": 23,
-  "versionName": "1.2.2",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.2/RuVK-Hub-1.2.2.apk",
-  "changelog": "Быстрое переключение лент главного экрана кнопками Вверх/Вниз на пульте, интеграция со сторонним поиском ATV-RU и системным поиском Android TV."
+  "versionCode": 24,
+  "versionName": "1.2.3",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.3/RuVK-Hub-1.2.3.apk",
+  "changelog": "Название подборки вверху экрана, страна производства в лентах и карточках, улучшенный многострочный формат каналов Android TV и Play Next."
 }

@@ -82,11 +82,13 @@ class MainActivity : FragmentActivity() {
     private var isMenuExpanded = false
 
     // Элементы информационного блока (Spotlight)
+    private lateinit var sectionHeader: TextView
     private lateinit var heroTitle: TextView
     private lateinit var badgeWatchProgress: TextView
     private lateinit var badgeAge: TextView
     private lateinit var badgeRating: TextView
     private lateinit var badgeYear: TextView
+    private lateinit var badgeCountry: TextView
     private lateinit var badgeRuntime: TextView
     private lateinit var badgeOriginalTitle: TextView
     private lateinit var heroOverview: TextView
@@ -211,11 +213,13 @@ class MainActivity : FragmentActivity() {
         )
         sideMenuRecycler = findViewById(R.id.side_menu_recycler)
 
+        sectionHeader = findViewById(R.id.section_header)
         heroTitle = findViewById(R.id.hero_title)
         badgeWatchProgress = findViewById(R.id.badge_watch_progress)
         badgeAge = findViewById(R.id.badge_age)
         badgeRating = findViewById(R.id.badge_rating)
         badgeYear = findViewById(R.id.badge_year)
+        badgeCountry = findViewById(R.id.badge_country)
         badgeRuntime = findViewById(R.id.badge_runtime)
         badgeOriginalTitle = findViewById(R.id.badge_original_title)
         heroOverview = findViewById(R.id.hero_overview)
@@ -479,6 +483,7 @@ class MainActivity : FragmentActivity() {
         }
 
         if (category == NumCategory.SEARCH) {
+            sectionHeader.visibility = View.GONE
             settingsContainer.visibility = View.GONE
             infoContainer.visibility = View.VISIBLE
             posterGridView.visibility = View.VISIBLE
@@ -498,6 +503,7 @@ class MainActivity : FragmentActivity() {
         }
 
         if (category == NumCategory.SETTINGS) {
+            sectionHeader.visibility = View.GONE
             searchContainer.visibility = View.GONE
             infoContainer.visibility = View.GONE
             posterGridView.visibility = View.GONE
@@ -509,6 +515,8 @@ class MainActivity : FragmentActivity() {
             return
         }
 
+        sectionHeader.visibility = View.VISIBLE
+        sectionHeader.text = category.title
         settingsContainer.visibility = View.GONE
         infoContainer.visibility = View.VISIBLE
         posterGridView.visibility = View.VISIBLE
@@ -671,7 +679,8 @@ class MainActivity : FragmentActivity() {
                 releaseDate = if (f.year > 0) "${f.year}-01-01" else "",
                 year = f.year,
                 voteAverage = f.rating,
-                mediaType = if (f.mediaType == "TV") MediaType.TV else MediaType.MOVIE
+                mediaType = if (f.mediaType == "TV") MediaType.TV else MediaType.MOVIE,
+                country = f.country
             )
         }
     }
@@ -688,6 +697,7 @@ class MainActivity : FragmentActivity() {
             var originalTitle = ""
             var runtime = 0
             var ageRating: String? = null
+            var countryStr = h.country
 
             val isTv = h.mediaType.equals("tv", ignoreCase = true)
             var posMs = h.positionMs
@@ -724,6 +734,7 @@ class MainActivity : FragmentActivity() {
                     originalTitle = fullItem.originalTitle
                     runtime = fullItem.runtimeMinutes
                     ageRating = fullItem.ageRating
+                    countryStr = fullItem.country
 
                     // Сохраняем обновленные данные в локальную БД
                     RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
@@ -732,7 +743,8 @@ class MainActivity : FragmentActivity() {
                             backdropUrl = itemBackdrop,
                             year = itemYear,
                             rating = itemRating,
-                            overview = itemOverview
+                            overview = itemOverview,
+                            country = countryStr
                         )
                     )
                 } catch (e: Exception) {
@@ -758,7 +770,8 @@ class MainActivity : FragmentActivity() {
                     watchDurationMs = durMs,
                     lastStreamUrl = lastStream,
                     lastSeason = sNum,
-                    lastEpisode = eNum
+                    lastEpisode = eNum,
+                    country = countryStr
                 )
             )
         }
@@ -814,6 +827,14 @@ class MainActivity : FragmentActivity() {
             badgeYear.visibility = View.GONE
         }
 
+        // Страна
+        if (!item.country.isNullOrBlank()) {
+            badgeCountry.visibility = View.VISIBLE
+            badgeCountry.text = item.country
+        } else {
+            badgeCountry.visibility = View.GONE
+        }
+
         // Хронометраж
         if (item.runtimeMinutes > 0) {
             badgeRuntime.visibility = View.VISIBLE
@@ -833,8 +854,8 @@ class MainActivity : FragmentActivity() {
         // Описание сюжета
         heroOverview.text = if (item.overview.isNotBlank()) item.overview else "Описание отсутствует"
 
-        // Фоновая дозагрузка возрастного рейтинга и хронометража, если их еще нет в объекте
-        if (item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0) {
+        // Фоновая дозагрузка возрастного рейтинга, страны и хронометража, если их еще нет в объекте
+        if (item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0 || item.country.isNullOrBlank()) {
             fetchExtraDetails(item)
         }
     }
@@ -857,6 +878,10 @@ class MainActivity : FragmentActivity() {
                     if (detailed.runtimeMinutes > 0) {
                         badgeRuntime.visibility = View.VISIBLE
                         badgeRuntime.text = "${detailed.runtimeMinutes} мин"
+                    }
+                    if (!detailed.country.isNullOrBlank()) {
+                        badgeCountry.visibility = View.VISIBLE
+                        badgeCountry.text = detailed.country
                     }
                 }
             } catch (e: Exception) {
@@ -1086,6 +1111,7 @@ class MainActivity : FragmentActivity() {
         badgeAge.visibility = View.GONE
         badgeRating.visibility = View.GONE
         badgeYear.visibility = View.GONE
+        badgeCountry.visibility = View.GONE
         badgeRuntime.visibility = View.GONE
         badgeOriginalTitle.visibility = View.GONE
         heroOverview.text = ""

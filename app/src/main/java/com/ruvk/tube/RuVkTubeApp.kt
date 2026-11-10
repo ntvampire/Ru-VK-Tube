@@ -41,7 +41,7 @@ class RuVkTubeApp : Application(), ImageLoaderFactory {
             AppDatabase::class.java,
             "ruvk_tube.db"
         )
-        .addMigrations(AppDatabase.MIGRATION_2_3)
+        .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
         .fallbackToDestructiveMigration()
         .build()
 

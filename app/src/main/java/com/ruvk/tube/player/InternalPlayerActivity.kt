@@ -53,6 +53,7 @@ class InternalPlayerActivity : AppCompatActivity() {
     private var mediaType: String = "MOVIE"
     private var season: Int = 0
     private var episode: Int = 0
+    private var country: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +74,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         mediaType = intent.getStringExtra(EXTRA_MEDIA_TYPE) ?: "MOVIE"
         season = intent.getIntExtra(EXTRA_SEASON, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
+        country = intent.getStringExtra(EXTRA_COUNTRY)
 
         playerView = findViewById(R.id.player_view)
         bufferingBar = findViewById(R.id.player_buffering)
@@ -412,7 +414,8 @@ class InternalPlayerActivity : AppCompatActivity() {
                             season = season,
                             episode = episode,
                             lastStreamUrl = streamUrl,
-                            updatedAt = now
+                            updatedAt = now,
+                            country = country
                         )
                     )
                     // Храним только последние 30 записей истории
@@ -441,5 +444,6 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_MEDIA_TYPE = "extra_media_type"
         const val EXTRA_SEASON = "extra_season"
         const val EXTRA_EPISODE = "extra_episode"
+        const val EXTRA_COUNTRY = "extra_country"
     }
 }

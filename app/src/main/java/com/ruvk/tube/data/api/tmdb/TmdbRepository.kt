@@ -71,6 +71,9 @@ class TmdbRepository {
     suspend fun getMovieDetails(id: Long): MediaItem {
         val dto = api.getMovieDetails(id, effectiveApiKey)
         val (ageRating, ageDesc) = extractMovieAgeRating(dto.releaseDates)
+        val countryCodes = dto.originCountry?.takeIf { it.isNotEmpty() }
+            ?: dto.productionCountries?.mapNotNull { it.iso }
+        val countryStr = formatCountries(countryCodes)
         val castMembers = dto.credits?.cast?.take(12)?.map { castItem ->
             CastMember(
                 id = castItem.id,
@@ -95,13 +98,17 @@ class TmdbRepository {
             imdbId = dto.imdbId,
             ageRating = ageRating,
             ageRatingDescription = ageDesc,
-            cast = castMembers
+            cast = castMembers,
+            country = countryStr
         )
     }
 
     suspend fun getTvDetails(id: Long): MediaItem {
         val dto = api.getTvDetails(id, effectiveApiKey)
         val (ageRating, ageDesc) = extractTvAgeRating(dto.contentRatings)
+        val countryCodes = dto.originCountry?.takeIf { it.isNotEmpty() }
+            ?: dto.productionCountries?.mapNotNull { it.iso }
+        val countryStr = formatCountries(countryCodes)
         val castMembers = dto.credits?.cast?.take(12)?.map { castItem ->
             CastMember(
                 id = castItem.id,
@@ -139,7 +146,8 @@ class TmdbRepository {
             ageRating = ageRating,
             ageRatingDescription = ageDesc,
             cast = castMembers,
-            seasons = tvSeasons
+            seasons = tvSeasons,
+            country = countryStr
         )
     }
 
@@ -262,6 +270,7 @@ class TmdbRepository {
         val resolvedDate = releaseDate ?: firstAirDate ?: ""
         val rawPoster = posterPath ?: backdropPath
         val rawBackdrop = backdropPath ?: posterPath
+        val countryStr = formatCountries(originCountry)
 
         return MediaItem(
             id = id,
@@ -274,7 +283,8 @@ class TmdbRepository {
             year = parseYear(resolvedDate),
             voteAverage = voteAverage ?: 0.0,
             runtimeMinutes = 0,
-            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE
+            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+            country = countryStr
         )
     }
 
@@ -345,7 +355,63 @@ class TmdbRepository {
         }
     }
 
+    private fun formatCountries(countryCodes: List<String>?): String? {
+        if (countryCodes.isNullOrEmpty()) return null
+        val countryNames = countryCodes.mapNotNull { code ->
+            val clean = code.trim().uppercase(Locale.ROOT)
+            KNOWN_COUNTRIES[clean] ?: run {
+                try {
+                    val display = Locale("", clean).getDisplayCountry(Locale("ru"))
+                    if (display.isNotBlank() && !display.equals(clean, ignoreCase = true)) {
+                        display.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("ru")) else it.toString() }
+                    } else null
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }.distinct()
+        return if (countryNames.isNotEmpty()) {
+            countryNames.take(2).joinToString(", ")
+        } else null
+    }
+
     companion object {
+        private val KNOWN_COUNTRIES = mapOf(
+            "US" to "США",
+            "GB" to "Великобритания",
+            "UK" to "Великобритания",
+            "FR" to "Франция",
+            "DE" to "Германия",
+            "IT" to "Италия",
+            "ES" to "Испания",
+            "KR" to "Южная Корея",
+            "JP" to "Япония",
+            "CN" to "Китай",
+            "CA" to "Канада",
+            "AU" to "Австралия",
+            "IN" to "Индия",
+            "TR" to "Турция",
+            "SE" to "Швеция",
+            "NO" to "Норвегия",
+            "DK" to "Дания",
+            "NL" to "Нидерланды",
+            "PL" to "Польша",
+            "MX" to "Мексика",
+            "BR" to "Бразилия",
+            "AR" to "Аргентина",
+            "IE" to "Ирландия",
+            "NZ" to "Новая Зеландия",
+            "BE" to "Бельгия",
+            "CH" to "Швейцария",
+            "AT" to "Австрия",
+            "CZ" to "Чехия",
+            "FI" to "Финляндия",
+            "TH" to "Таиланд",
+            "HK" to "Гонконг",
+            "TW" to "Тайвань",
+            "IL" to "Израиль",
+            "ZA" to "ЮАР"
+        )
         const val DEFAULT_API_KEY = "4e44d9029b1270a757cddc766a1bcb63"
         const val IMAGE_BASE_POSTER = "https://image.tmdb.org/t/p/w500"
         const val IMAGE_BASE_BACKDROP = "https://image.tmdb.org/t/p/original"

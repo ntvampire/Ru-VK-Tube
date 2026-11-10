@@ -44,6 +44,7 @@ class DetailsActivity : FragmentActivity() {
     private lateinit var badgeAge: TextView
     private lateinit var badgeRating: TextView
     private lateinit var badgeYear: TextView
+    private lateinit var badgeCountry: TextView
     private lateinit var badgeRuntime: TextView
     private lateinit var overviewText: TextView
 
@@ -170,6 +171,7 @@ class DetailsActivity : FragmentActivity() {
             val stream = intent.getStringExtra(EXTRA_LAST_STREAM)
             val sNum = intent.getIntExtra(EXTRA_LAST_SEASON, 0)
             val eNum = intent.getIntExtra(EXTRA_LAST_EPISODE, 0)
+            val country = intent.getStringExtra(EXTRA_COUNTRY)
 
             return MediaItem(
                 id = id,
@@ -188,7 +190,8 @@ class DetailsActivity : FragmentActivity() {
                 watchDurationMs = dur,
                 lastStreamUrl = stream,
                 lastSeason = sNum,
-                lastEpisode = eNum
+                lastEpisode = eNum,
+                country = country
             )
         }
 
@@ -212,6 +215,7 @@ class DetailsActivity : FragmentActivity() {
                 val rating = uri.getQueryParameter("rating")?.toDoubleOrNull() ?: intent.getDoubleExtra(EXTRA_RATING, 0.0)
                 val runtime = uri.getQueryParameter("runtime")?.toIntOrNull() ?: intent.getIntExtra(EXTRA_RUNTIME, 0)
                 val age = uri.getQueryParameter("age") ?: intent.getStringExtra(EXTRA_AGE_RATING)
+                val country = uri.getQueryParameter("country") ?: intent.getStringExtra(EXTRA_COUNTRY)
 
                 return MediaItem(
                     id = uriId,
@@ -225,7 +229,8 @@ class DetailsActivity : FragmentActivity() {
                     voteAverage = rating,
                     runtimeMinutes = runtime,
                     mediaType = mediaType,
-                    ageRating = age
+                    ageRating = age,
+                    country = country
                 )
             }
         }
@@ -264,6 +269,7 @@ class DetailsActivity : FragmentActivity() {
         badgeAge = findViewById(R.id.badge_age)
         badgeRating = findViewById(R.id.badge_rating)
         badgeYear = findViewById(R.id.badge_year)
+        badgeCountry = findViewById(R.id.badge_country)
         badgeRuntime = findViewById(R.id.badge_runtime)
         overviewText = findViewById(R.id.details_overview)
 
@@ -554,6 +560,13 @@ class DetailsActivity : FragmentActivity() {
             badgeYear.visibility = View.GONE
         }
 
+        if (!item.country.isNullOrBlank()) {
+            badgeCountry.visibility = View.VISIBLE
+            badgeCountry.text = item.country
+        } else {
+            badgeCountry.visibility = View.GONE
+        }
+
         if (item.runtimeMinutes > 0) {
             badgeRuntime.visibility = View.VISIBLE
             badgeRuntime.text = "${item.runtimeMinutes} мин"
@@ -579,8 +592,8 @@ class DetailsActivity : FragmentActivity() {
             bindCast(item.cast)
         }
 
-        // Фоновая дозагрузка деталей TMDB (актеры, сезоны, возрастной рейтинг, хронометраж)
-        if (item.cast.isEmpty() || item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0 || (item.mediaType == MediaType.TV && item.seasons.isEmpty())) {
+        // Фоновая дозагрузка деталей TMDB (актеры, сезоны, возрастной рейтинг, страна, хронометраж)
+        if (item.cast.isEmpty() || item.ageRating.isNullOrBlank() || item.runtimeMinutes == 0 || item.country.isNullOrBlank() || (item.mediaType == MediaType.TV && item.seasons.isEmpty())) {
             fetchExtraDetails(item)
         }
     }
@@ -737,6 +750,10 @@ class DetailsActivity : FragmentActivity() {
                     badgeRuntime.visibility = View.VISIBLE
                     badgeRuntime.text = "${detailed.runtimeMinutes} мин"
                 }
+                if (!detailed.country.isNullOrBlank()) {
+                    badgeCountry.visibility = View.VISIBLE
+                    badgeCountry.text = detailed.country
+                }
                 if (detailed.cast.isNotEmpty()) {
                     bindCast(detailed.cast)
                 }
@@ -850,6 +867,7 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_RATING, item.voteAverage)
             putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
             putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
+            putExtra(InternalPlayerActivity.EXTRA_COUNTRY, item.country)
             if (isTv) {
                 putExtra(InternalPlayerActivity.EXTRA_SEASON, currentSeasonNumber)
                 putExtra(InternalPlayerActivity.EXTRA_EPISODE, currentEpisodeNumber)
@@ -879,6 +897,7 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_RATING, item.voteAverage)
             putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
             putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
+            putExtra(InternalPlayerActivity.EXTRA_COUNTRY, item.country)
             if (isTv) {
                 putExtra(InternalPlayerActivity.EXTRA_SEASON, savedSeason)
                 putExtra(InternalPlayerActivity.EXTRA_EPISODE, savedEpisode)
@@ -982,7 +1001,8 @@ class DetailsActivity : FragmentActivity() {
                             overview = item.overview,
                             mediaType = item.mediaType.name,
                             year = item.year,
-                            rating = item.voteAverage
+                            rating = item.voteAverage,
+                            country = item.country
                         )
                     )
                 }
@@ -1100,5 +1120,6 @@ class DetailsActivity : FragmentActivity() {
         const val EXTRA_LAST_STREAM = "extra_last_stream"
         const val EXTRA_LAST_SEASON = "extra_last_season"
         const val EXTRA_LAST_EPISODE = "extra_last_episode"
+        const val EXTRA_COUNTRY = "extra_country"
     }
 }

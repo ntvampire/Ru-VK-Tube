@@ -90,6 +90,7 @@ class SearchSuggestProvider : ContentProvider() {
                 val subtitle = listOfNotNull(
                     typeRu,
                     yearStr.takeIf { it.isNotBlank() },
+                    item.country?.takeIf { it.isNotBlank() },
                     item.ageRating?.takeIf { it.isNotBlank() }
                 ).joinToString(" • ")
 

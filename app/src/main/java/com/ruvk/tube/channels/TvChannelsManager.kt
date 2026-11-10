@@ -99,6 +99,7 @@ object TvChannelsManager {
                                     item.copy(
                                         ageRating = details.ageRating,
                                         runtimeMinutes = details.runtimeMinutes,
+                                        country = details.country,
                                         overview = details.overview.ifBlank { item.overview }
                                     )
                                 } else {
@@ -106,6 +107,7 @@ object TvChannelsManager {
                                     item.copy(
                                         ageRating = details.ageRating,
                                         runtimeMinutes = details.runtimeMinutes,
+                                        country = details.country,
                                         overview = details.overview.ifBlank { item.overview }
                                     )
                                 }
@@ -149,17 +151,20 @@ object TvChannelsManager {
                         var ageRating: String? = null
                         var runtimeMinutes = 0
                         var overview = f.overview ?: ""
+                        var countryStr = f.country
                         try {
                             if (isTv) {
                                 val tvDetails = RuVkTubeApp.instance.tmdbRepository.getTvDetails(f.tmdbId)
                                 ageRating = tvDetails.ageRating
                                 runtimeMinutes = tvDetails.runtimeMinutes
                                 if (overview.isBlank()) overview = tvDetails.overview
+                                if (countryStr.isNullOrBlank()) countryStr = tvDetails.country
                             } else {
                                 val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(f.tmdbId)
                                 ageRating = mDetails.ageRating
                                 runtimeMinutes = mDetails.runtimeMinutes
                                 if (overview.isBlank()) overview = mDetails.overview
+                                if (countryStr.isNullOrBlank()) countryStr = mDetails.country
                             }
                         } catch (_: Exception) {}
 
@@ -175,7 +180,8 @@ object TvChannelsManager {
                             voteAverage = f.rating,
                             runtimeMinutes = runtimeMinutes,
                             ageRating = ageRating,
-                            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE
+                            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+                            country = countryStr
                         )
                     }
                 }.awaitAll()
@@ -226,6 +232,7 @@ object TvChannelsManager {
                         var ageRating: String? = null
                         var runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else 0
                         var overview = h.overview ?: ""
+                        var countryStr = h.country
 
                         try {
                             if (isTv) {
@@ -233,11 +240,13 @@ object TvChannelsManager {
                                 ageRating = tvDetails.ageRating
                                 if (runtimeMinutes == 0) runtimeMinutes = tvDetails.runtimeMinutes
                                 if (overview.isBlank()) overview = tvDetails.overview
+                                if (countryStr.isNullOrBlank()) countryStr = tvDetails.country
                             } else {
                                 val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(h.tmdbId)
                                 ageRating = mDetails.ageRating
                                 if (runtimeMinutes == 0) runtimeMinutes = mDetails.runtimeMinutes
                                 if (overview.isBlank()) overview = mDetails.overview
+                                if (countryStr.isNullOrBlank()) countryStr = mDetails.country
                             }
                         } catch (_: Exception) {}
 
@@ -258,7 +267,8 @@ object TvChannelsManager {
                             watchDurationMs = durMs,
                             lastStreamUrl = lastStream,
                             lastSeason = sNum,
-                            lastEpisode = eNum
+                            lastEpisode = eNum,
+                            country = countryStr
                         )
                     }
                 }.awaitAll()
@@ -336,6 +346,7 @@ object TvChannelsManager {
                 var ageRating: String? = null
                 var runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else 0
                 var overview = h.overview ?: ""
+                var countryStr = h.country
 
                 try {
                     if (isTv) {
@@ -343,11 +354,13 @@ object TvChannelsManager {
                         ageRating = tvDetails.ageRating
                         if (runtimeMinutes == 0) runtimeMinutes = tvDetails.runtimeMinutes
                         if (overview.isBlank()) overview = tvDetails.overview
+                        if (countryStr.isNullOrBlank()) countryStr = tvDetails.country
                     } else {
                         val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(h.tmdbId)
                         ageRating = mDetails.ageRating
                         if (runtimeMinutes == 0) runtimeMinutes = mDetails.runtimeMinutes
                         if (overview.isBlank()) overview = mDetails.overview
+                        if (countryStr.isNullOrBlank()) countryStr = mDetails.country
                     }
                 } catch (_: Exception) {}
 
@@ -368,7 +381,8 @@ object TvChannelsManager {
                     watchDurationMs = durMs,
                     lastStreamUrl = lastStream,
                     lastSeason = sNum,
-                    lastEpisode = eNum
+                    lastEpisode = eNum,
+                    country = countryStr
                 )
 
                 val programBuilder = if (existing != null) {
@@ -380,13 +394,14 @@ object TvChannelsManager {
                 val programUri = buildProgramIntentUri(context, mediaItem)
                 val imageUri = mediaItem.posterUrl?.takeIf { it.isNotBlank() }
                     ?: mediaItem.backdropUrl?.takeIf { it.isNotBlank() }
-                val overviewText = mediaItem.overview.takeIf { it.isNotBlank() } ?: mediaItem.title
+                val subtitle = buildMetadataSubtitle(mediaItem)
+                val overviewText = mediaItem.overview.takeIf { it.isNotBlank() } ?: subtitle
 
                 programBuilder
                     .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
                     .setLastEngagementTimeUtcMillis(h.updatedAt)
-                    .setTitle(buildProgramTitle(mediaItem))
-                    .setDescription(overviewText)
+                    .setTitle(mediaItem.title)
+                    .setDescription(subtitle.ifBlank { overviewText })
                     .setLongDescription(overviewText)
                     .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
                     .setType(if (isTv) TvContractCompat.PreviewPrograms.TYPE_TV_SERIES else TvContractCompat.PreviewPrograms.TYPE_MOVIE)
@@ -433,20 +448,37 @@ object TvChannelsManager {
         }
     }
 
-    fun buildProgramTitle(item: MediaItem): String {
+    fun buildMetadataSubtitle(item: MediaItem): String {
         val meta = mutableListOf<String>()
+
+        val episodeInfo = if (item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0) {
+            "S${item.lastSeason}E${item.lastEpisode}"
+        } else null
+        if (episodeInfo != null) {
+            meta.add(episodeInfo)
+        }
 
         // 1. Возрастной рейтинг: 18+, 16+, 12+, 6+, 0+
         item.ageRating?.takeIf { it.isNotBlank() }?.let {
             meta.add(it)
         }
 
-        // 2. Рейтинг: ★ 6.6
+        // 2. Рейтинг: ★ 8.2
         if (item.voteAverage > 0.0) {
             meta.add(String.format(Locale.US, "★ %.1f", item.voteAverage))
         }
 
-        // 3. Год: 2026
+        // 3. Длительность: 124 мин
+        val runtimeMinutes = when {
+            item.runtimeMinutes > 0 -> item.runtimeMinutes
+            item.watchDurationMs > 0L -> (item.watchDurationMs / 60_000L).toInt()
+            else -> 0
+        }
+        if (runtimeMinutes > 0) {
+            meta.add("$runtimeMinutes мин")
+        }
+
+        // 4. Год: 2024
         val yearStr = when {
             item.year > 0 -> item.year.toString()
             item.releaseDate.isNotBlank() -> item.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
@@ -456,34 +488,15 @@ object TvChannelsManager {
             meta.add(yearStr)
         }
 
-        // 4. Длительность: 99 мин или S1E3 • 48 мин
-        val runtimeMinutes = when {
-            item.runtimeMinutes > 0 -> item.runtimeMinutes
-            item.watchDurationMs > 0L -> (item.watchDurationMs / 60_000L).toInt()
-            else -> 0
-        }
-        val episodeInfo = if (item.mediaType == MediaType.TV && item.lastSeason > 0 && item.lastEpisode > 0) {
-            "S${item.lastSeason}E${item.lastEpisode}"
-        } else null
-
-        when {
-            episodeInfo != null && runtimeMinutes > 0 -> {
-                meta.add("$episodeInfo $runtimeMinutes мин")
-            }
-            episodeInfo != null -> {
-                meta.add(episodeInfo)
-            }
-            runtimeMinutes > 0 -> {
-                meta.add("$runtimeMinutes мин")
-            }
+        // 5. Страна
+        item.country?.takeIf { it.isNotBlank() }?.let {
+            meta.add(it)
         }
 
-        return if (meta.isNotEmpty()) {
-            "${item.title}  •  ${meta.joinToString(" • ")}"
-        } else {
-            item.title
-        }
+        return meta.joinToString(" • ")
     }
+
+    fun buildProgramTitle(item: MediaItem): String = item.title
 
     private fun getOrCreateChannel(
         context: Context,
@@ -594,12 +607,13 @@ object TvChannelsManager {
             val programUri = buildProgramIntentUri(context, item)
             val imageUri = item.posterUrl?.takeIf { it.isNotBlank() }
                 ?: item.backdropUrl?.takeIf { it.isNotBlank() }
-            val overviewText = item.overview.takeIf { it.isNotBlank() } ?: item.title
+            val subtitle = buildMetadataSubtitle(item)
+            val overviewText = item.overview.takeIf { it.isNotBlank() } ?: subtitle
 
             programBuilder
                 .setChannelId(channelId)
-                .setTitle(buildProgramTitle(item))
-                .setDescription(overviewText)
+                .setTitle(item.title)
+                .setDescription(subtitle.ifBlank { overviewText })
                 .setLongDescription(overviewText)
                 .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
                 .setType(if (item.mediaType == MediaType.TV) TvContractCompat.PreviewPrograms.TYPE_TV_SERIES else TvContractCompat.PreviewPrograms.TYPE_MOVIE)
@@ -665,6 +679,7 @@ object TvChannelsManager {
             putExtra(DetailsActivity.EXTRA_LAST_STREAM, item.lastStreamUrl)
             putExtra(DetailsActivity.EXTRA_LAST_SEASON, item.lastSeason)
             putExtra(DetailsActivity.EXTRA_LAST_EPISODE, item.lastEpisode)
+            putExtra(DetailsActivity.EXTRA_COUNTRY, item.country)
             putExtra(DetailsActivity.EXTRA_MEDIA_ITEM, item)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }

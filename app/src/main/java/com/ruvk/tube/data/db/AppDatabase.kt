@@ -27,7 +27,8 @@ data class HistoryEntity(
     val season: Int = 0,
     val episode: Int = 0,
     val lastStreamUrl: String,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val country: String? = null
 )
 
 @Entity(
@@ -54,7 +55,8 @@ data class FavoriteEntity(
     val mediaType: String,
     val year: Int,
     val rating: Double,
-    val addedAt: Long = System.currentTimeMillis()
+    val addedAt: Long = System.currentTimeMillis(),
+    val country: String? = null
 )
 
 @Dao
@@ -122,7 +124,7 @@ interface FavoritesDao {
 
 @Database(
     entities = [HistoryEntity::class, FavoriteEntity::class, EpisodeProgressEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -147,6 +149,13 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `watch_history` ADD COLUMN `country` TEXT")
+                db.execSQL("ALTER TABLE `favorites` ADD COLUMN `country` TEXT")
             }
         }
     }
