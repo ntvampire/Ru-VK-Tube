@@ -1,7 +1,9 @@
 package com.ruvk.tube.ui.details
 
+import android.app.SearchManager
 import android.content.Intent
 import android.graphics.Outline
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewOutlineProvider
@@ -195,7 +197,8 @@ class DetailsActivity : FragmentActivity() {
             )
         }
 
-        val uri = intent.data
+        val rawUriString = intent.dataString ?: intent.getStringExtra(SearchManager.SUGGEST_COLUMN_INTENT_DATA)
+        val uri = rawUriString?.let { Uri.parse(it) } ?: intent.data
         if (uri != null) {
             val idParam = uri.getQueryParameter("tmdbId")
                 ?: uri.getQueryParameter("id")
@@ -204,7 +207,7 @@ class DetailsActivity : FragmentActivity() {
             if (uriId > 0) {
                 val typeStr = uri.getQueryParameter("mediaType")
                     ?: uri.getQueryParameter("type")
-                    ?: if (uri.host == "tv" || uri.path?.contains("/tv") == true) "TV" else "MOVIE"
+                    ?: if (uri.host?.equals("tv", ignoreCase = true) == true || uri.path?.contains("/tv") == true) "TV" else "MOVIE"
                 val mediaType = if (typeStr.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE
                 val title = uri.getQueryParameter("title") ?: intent.getStringExtra(EXTRA_TITLE) ?: ""
                 val origTitle = uri.getQueryParameter("originalTitle") ?: intent.getStringExtra(EXTRA_ORIGINAL_TITLE) ?: ""
@@ -234,6 +237,29 @@ class DetailsActivity : FragmentActivity() {
                 )
             }
         }
+
+        // Поддержка Intent Extras от ATV-RU Поиск (suggest_intent_data_id, EXTRA_DATA_KEY)
+        val extraDataId = intent.getStringExtra("suggest_intent_data_id")
+            ?: intent.getStringExtra(SearchManager.EXTRA_DATA_KEY)
+        val extraIdLong = extraDataId?.toLongOrNull() ?: 0L
+        if (extraIdLong > 0L) {
+            val extraType = intent.getStringExtra("suggest_intent_extra_data")
+            val mediaType = if (extraType?.equals("tv", ignoreCase = true) == true) MediaType.TV else MediaType.MOVIE
+            val title = intent.getStringExtra(SearchManager.SUGGEST_COLUMN_TEXT_1) ?: ""
+            return MediaItem(
+                id = extraIdLong,
+                title = title,
+                originalTitle = "",
+                overview = "",
+                posterUrl = null,
+                backdropUrl = null,
+                releaseDate = "",
+                year = 0,
+                voteAverage = 0.0,
+                mediaType = mediaType
+            )
+        }
+
         return null
     }
 

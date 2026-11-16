@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.app.AlertDialog
 import android.app.SearchManager
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -40,6 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 class MainActivity : FragmentActivity() {
 
@@ -108,8 +110,15 @@ class MainActivity : FragmentActivity() {
         setupSideMenu()
         setupPosterGrid()
 
+        val isDetails = isDetailsIntent(intent)
         val searchQuery = extractSearchQuery(intent)
-        if (!searchQuery.isNullOrBlank()) {
+
+        if (isDetails) {
+            val initialCategory = parseTargetCategory(intent) ?: NumCategory.TRENDING
+            sideMenuAdapter.setSelected(initialCategory)
+            loadCategory(initialCategory)
+            launchDetailsFromIntent(intent)
+        } else if (!searchQuery.isNullOrBlank()) {
             sideMenuAdapter.setSelected(NumCategory.SEARCH)
             loadCategory(NumCategory.SEARCH)
             searchEditText.setText(searchQuery)
@@ -129,6 +138,13 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent == null) return
+
+        if (isDetailsIntent(intent)) {
+            launchDetailsFromIntent(intent)
+            return
+        }
+
         val searchQuery = extractSearchQuery(intent)
         if (!searchQuery.isNullOrBlank()) {
             sideMenuAdapter.setSelected(NumCategory.SEARCH)
@@ -144,6 +160,42 @@ class MainActivity : FragmentActivity() {
             sideMenuAdapter.setSelected(category)
             loadCategory(category)
         }
+    }
+
+    private fun isDetailsIntent(intent: Intent?): Boolean {
+        if (intent == null) return false
+        if (intent.hasExtra(DetailsActivity.EXTRA_MEDIA_ITEM) || intent.getLongExtra(DetailsActivity.EXTRA_MEDIA_ID, 0L) > 0L) {
+            return true
+        }
+        val extraId = intent.getStringExtra("suggest_intent_data_id")
+            ?: intent.getStringExtra(SearchManager.EXTRA_DATA_KEY)
+        if (extraId?.toLongOrNull() != null && extraId.toLong() > 0L) {
+            return true
+        }
+        val rawUri = intent.dataString ?: intent.getStringExtra(SearchManager.SUGGEST_COLUMN_INTENT_DATA)
+        val uri = rawUri?.let { Uri.parse(it) } ?: intent.data
+        if (uri != null) {
+            val scheme = uri.scheme?.lowercase(Locale.ROOT)
+            val host = uri.host?.lowercase(Locale.ROOT)
+            if (scheme == "ruvk" && (host == "details" || host == "movie" || host == "tv")) {
+                return true
+            }
+            if (!uri.getQueryParameter("tmdbId").isNullOrBlank() || !uri.getQueryParameter("id").isNullOrBlank()) {
+                return true
+            }
+            if ((host == "movie" || host == "tv") && uri.lastPathSegment?.toLongOrNull() != null) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun launchDetailsFromIntent(intent: Intent) {
+        val detailsIntent = Intent(intent).apply {
+            setClass(this@MainActivity, DetailsActivity::class.java)
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        startActivity(detailsIntent)
     }
 
     private fun extractSearchQuery(intent: Intent?): String? {

@@ -3,6 +3,7 @@ package com.ruvk.tube.search
 import android.app.SearchManager
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Intent
 import android.content.UriMatcher
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -34,6 +35,7 @@ class SearchSuggestProvider : ContentProvider() {
             "_id",
             SearchManager.SUGGEST_COLUMN_TEXT_1,
             SearchManager.SUGGEST_COLUMN_TEXT_2,
+            SearchManager.SUGGEST_COLUMN_INTENT_ACTION,
             SearchManager.SUGGEST_COLUMN_INTENT_DATA,
             "suggest_icon_1",
             "suggest_result_card_image",
@@ -84,7 +86,6 @@ class SearchSuggestProvider : ContentProvider() {
 
             for (item in items.take(15)) {
                 val mediaTypeParam = if (item.mediaType == MediaType.TV) "tv" else "movie"
-                val deepLink = "ruvk://details?tmdbId=${item.id}&mediaType=$mediaTypeParam"
                 val yearStr = if (item.year > 0) item.year.toString() else ""
                 val typeRu = if (item.mediaType == MediaType.TV) "Сериал" else "Фильм"
                 val subtitle = listOfNotNull(
@@ -101,11 +102,19 @@ class SearchSuggestProvider : ContentProvider() {
                     ""
                 }
 
+                val encodedTitle = Uri.encode(item.title)
+                val encodedPoster = Uri.encode(item.posterUrl ?: "")
+                val encodedBackdrop = Uri.encode(item.backdropUrl ?: "")
+                // Формат Deep Link: ruvk://movie/123 и ruvk://tv/123 по стандарту ATV-RU Поиск
+                // с query-параметрами для мгновенного предзаполнения карточки в DetailsActivity
+                val deepLink = "ruvk://$mediaTypeParam/${item.id}?tmdbId=${item.id}&mediaType=$mediaTypeParam&title=$encodedTitle&year=${item.year}&rating=$ratingScore&poster=$encodedPoster&backdrop=$encodedBackdrop"
+
                 cursor.addRow(
                     arrayOf(
                         item.id,                               // _id
                         item.title,                            // SUGGEST_COLUMN_TEXT_1
                         subtitle,                              // SUGGEST_COLUMN_TEXT_2
+                        Intent.ACTION_VIEW,                    // SUGGEST_COLUMN_INTENT_ACTION
                         deepLink,                              // SUGGEST_COLUMN_INTENT_DATA
                         item.posterUrl ?: "",                  // suggest_icon_1 (вертикальный постер)
                         item.backdropUrl ?: "",                // suggest_result_card_image (16:9)
