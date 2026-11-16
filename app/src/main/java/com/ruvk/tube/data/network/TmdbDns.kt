@@ -5,31 +5,63 @@ import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.UnknownHostException
 
 /**
  * Резолвер DNS для TMDB.
- * Сначала пробует системный DNS. В случае ошибки/блокировки опрашивает Quad9 (9.9.9.9:53) по открытому UDP.
+ * 1. Пробует системный DNS с приоритетом IPv4 над IPv6 (в эмуляторах/ТВ IPv6 часто не имеет внешнего маршрута).
+ * 2. В случае ошибки/блокировки опрашивает Quad9 (9.9.9.9:53) по открытому UDP.
+ * 3. Резервный Anycast IP-фолбэк для CDN CloudFront / BunnyCDN при отказе локального DNS-шлюза.
  */
 class TmdbDns : Dns {
+
+    companion object {
+        private val FALLBACK_TMDB_API_IPS = listOf(
+            "143.204.238.8",
+            "143.204.238.50",
+            "143.204.238.23",
+            "143.204.238.7"
+        )
+        private val FALLBACK_TMDB_IMAGE_IPS = listOf(
+            "169.150.247.34",
+            "169.150.247.35",
+            "169.150.247.36"
+        )
+    }
 
     override fun lookup(hostname: String): List<InetAddress> {
         // 1. Пробуем системный DNS
         try {
             val addresses = Dns.SYSTEM.lookup(hostname)
             if (addresses.isNotEmpty()) {
-                return addresses
+                // Приоритет IPv4 над IPv6, чтобы не ловить таймауты в эмуляторах без IPv6 маршрутизации
+                return addresses.sortedBy { it !is Inet4Address }
             }
         } catch (e: Exception) {
             // Системный DNS не ответил или заблокирован провайдером
         }
 
         // 2. Если домен TMDB и системный DNS не ответил — прямой UDP запрос к Quad9 (9.9.9.9)
-        if (hostname.contains("themoviedb.org", ignoreCase = true) || hostname.contains("tmdb.org", ignoreCase = true)) {
+        val isTmdb = hostname.contains("themoviedb.org", ignoreCase = true) || hostname.contains("tmdb.org", ignoreCase = true)
+        if (isTmdb) {
             val quad9Result = resolveViaUdp(hostname, "9.9.9.9")
             if (quad9Result.isNotEmpty()) {
-                return quad9Result
+                return quad9Result.sortedBy { it !is Inet4Address }
+            }
+
+            // 3. Аварийный Anycast IP-фолбэк для TMDB
+            val fallbackIps = if (hostname.contains("image.tmdb.org", ignoreCase = true)) {
+                FALLBACK_TMDB_IMAGE_IPS
+            } else {
+                FALLBACK_TMDB_API_IPS
+            }
+            val resolvedFallback = fallbackIps.mapNotNull { ip ->
+                runCatching { InetAddress.getByName(ip) }.getOrNull()
+            }
+            if (resolvedFallback.isNotEmpty()) {
+                return resolvedFallback
             }
         }
 

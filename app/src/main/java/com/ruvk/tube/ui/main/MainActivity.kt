@@ -177,14 +177,16 @@ class MainActivity : FragmentActivity() {
         if (uri != null) {
             val scheme = uri.scheme?.lowercase(Locale.ROOT)
             val host = uri.host?.lowercase(Locale.ROOT)
-            if (scheme == "ruvk" && (host == "details" || host == "movie" || host == "tv")) {
-                return true
-            }
-            if (!uri.getQueryParameter("tmdbId").isNullOrBlank() || !uri.getQueryParameter("id").isNullOrBlank()) {
-                return true
-            }
-            if ((host == "movie" || host == "tv") && uri.lastPathSegment?.toLongOrNull() != null) {
-                return true
+            if (scheme == "ruvk") {
+                if (host == "details" || host == "movie" || host == "tv") {
+                    return true
+                }
+                if (!uri.getQueryParameter("tmdbId").isNullOrBlank() || !uri.getQueryParameter("id").isNullOrBlank()) {
+                    return true
+                }
+                if ((host == "movie" || host == "tv") && uri.lastPathSegment?.toLongOrNull() != null) {
+                    return true
+                }
             }
         }
         return false
