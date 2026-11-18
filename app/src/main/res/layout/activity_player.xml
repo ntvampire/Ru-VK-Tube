@@ -11,7 +11,7 @@
         android:layout_height="match_parent"
         app:controller_layout_id="@layout/custom_player_control_view"
         app:show_buffering="when_playing"
-        app:show_timeout="3500"
+        app:show_timeout="2000"
         app:surface_type="surface_view"
         app:use_controller="true" />
 

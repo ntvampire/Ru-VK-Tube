@@ -79,6 +79,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         country = intent.getStringExtra(EXTRA_COUNTRY)
 
         playerView = findViewById(R.id.player_view)
+        playerView.controllerShowTimeoutMs = CONTROLLER_TIMEOUT_MS
         bufferingBar = findViewById(R.id.player_buffering)
         dimOverlay = findViewById(R.id.player_dim_overlay)
 
@@ -264,71 +265,159 @@ class InternalPlayerActivity : AppCompatActivity() {
         }
     }
 
+    private var seekHideJob: Job? = null
+
+    private fun cancelSeekHide() {
+        seekHideJob?.cancel()
+        seekHideJob = null
+    }
+
+    private fun scheduleSeekHide(delayMs: Long) {
+        cancelSeekHide()
+        seekHideJob = lifecycleScope.launch {
+            delay(delayMs)
+            if (!isFinishing && !isDestroyed) {
+                playerView.hideController()
+            }
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val player = exoPlayer ?: return super.dispatchKeyEvent(event)
+
         if (event.action == KeyEvent.ACTION_DOWN) {
-            val player = exoPlayer
-            if (player != null) {
-                when (event.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        if (isDimmed) {
-                            hideDimOverlay()
-                        }
-                        if (player.isPlaying) {
-                            player.pause()
-                            playerView.showController()
-                            startPauseDimTimer()
-                        } else {
-                            cancelPauseDimTimer()
-                            player.play()
-                            playerView.hideController()
-                        }
-                        return true
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    cancelSeekHide()
+                    if (isDimmed) {
+                        hideDimOverlay()
                     }
-                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        if (isDimmed) {
-                            hideDimOverlay()
-                        }
+                    if (player.isPlaying) {
+                        player.pause()
+                        playerView.showController()
+                        startPauseDimTimer()
+                    } else {
+                        cancelPauseDimTimer()
+                        player.play()
+                        playerView.hideController()
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    cancelSeekHide()
+                    if (isDimmed) {
+                        hideDimOverlay()
+                    }
+                    if (!player.isPlaying) {
+                        startPauseDimTimer()
+                    }
+                    playerView.showController()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_MEDIA_REWIND,
+                KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
+                KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD -> {
+                    cancelSeekHide()
+                    if (isDimmed) {
+                        hideDimOverlay()
+                    }
+                    if (!player.isPlaying) {
+                        startPauseDimTimer()
+                    }
+                    playerView.showController()
+                    player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                    // Резервный таймер автоскрытия для пультов без ACTION_UP (HDMI-CEC)
+                    scheduleSeekHide(SEEK_FALLBACK_TIMEOUT_MS)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+                KeyEvent.KEYCODE_MEDIA_STEP_FORWARD,
+                KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD -> {
+                    cancelSeekHide()
+                    if (isDimmed) {
+                        hideDimOverlay()
+                    }
+                    if (!player.isPlaying) {
+                        startPauseDimTimer()
+                    }
+                    playerView.showController()
+                    val dur = player.duration
+                    val target = if (dur > 0) {
+                        (player.currentPosition + 10_000).coerceAtMost(dur)
+                    } else {
+                        player.currentPosition + 10_000
+                    }
+                    player.seekTo(target)
+                    // Резервный таймер автоскрытия для пультов без ACTION_UP (HDMI-CEC)
+                    scheduleSeekHide(SEEK_FALLBACK_TIMEOUT_MS)
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    cancelSeekHide()
+                    if (isDimmed) {
+                        hideDimOverlay()
+                    }
+                    if (player.isPlaying) {
+                        player.pause()
+                        playerView.showController()
+                        startPauseDimTimer()
+                    } else {
+                        cancelPauseDimTimer()
+                        player.play()
+                        playerView.hideController()
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                    cancelSeekHide()
+                    if (isDimmed) {
+                        hideDimOverlay()
+                    }
+                    cancelPauseDimTimer()
+                    player.play()
+                    playerView.hideController()
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                    cancelSeekHide()
+                    if (isDimmed) {
+                        hideDimOverlay()
+                    }
+                    player.pause()
+                    playerView.showController()
+                    startPauseDimTimer()
+                    return true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    cancelSeekHide()
+                    if (isDimmed) {
+                        hideDimOverlay()
                         if (!player.isPlaying) {
                             startPauseDimTimer()
                         }
-                        playerView.showController()
                         return true
                     }
-                    KeyEvent.KEYCODE_DPAD_LEFT -> {
-                        if (isDimmed) {
-                            hideDimOverlay()
-                        }
-                        if (!player.isPlaying) {
-                            startPauseDimTimer()
-                        }
-                        playerView.showController()
-                        player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                    if (playerView.isControllerFullyVisible) {
+                        playerView.hideController()
                         return true
                     }
-                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                        if (isDimmed) {
-                            hideDimOverlay()
-                        }
-                        if (!player.isPlaying) {
-                            startPauseDimTimer()
-                        }
-                        playerView.showController()
-                        player.seekTo((player.currentPosition + 10_000).coerceAtMost(player.duration))
-                        return true
-                    }
-                    KeyEvent.KEYCODE_BACK -> {
-                        if (isDimmed) {
-                            hideDimOverlay()
-                            if (!player.isPlaying) {
-                                startPauseDimTimer()
-                            }
-                            return true
-                        }
-                        if (playerView.isControllerFullyVisible) {
-                            playerView.hideController()
-                            return true
-                        }
-                    }
+                }
+            }
+        } else if (event.action == KeyEvent.ACTION_UP) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_MEDIA_REWIND,
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+                KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
+                KeyEvent.KEYCODE_MEDIA_STEP_FORWARD,
+                KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD,
+                KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD -> {
+                    // Моментальное скрытие интерфейса сразу по отпусканию кнопки перемотки
+                    scheduleSeekHide(SEEK_RELEASE_TIMEOUT_MS)
+                    return true
                 }
             }
         }
@@ -392,6 +481,7 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        cancelSeekHide()
         cancelPauseDimTimer()
         stopProgressTracking()
         savePlaybackPositionInternal()
@@ -400,6 +490,7 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        cancelSeekHide()
         cancelPauseDimTimer()
         stopProgressTracking()
         savePlaybackPositionInternal()
@@ -408,6 +499,7 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        cancelSeekHide()
         cancelPauseDimTimer()
         stopProgressTracking()
         savePlaybackPositionInternal(isBlocking = true)
@@ -493,6 +585,10 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val CONTROLLER_TIMEOUT_MS = 2000
+        private const val SEEK_RELEASE_TIMEOUT_MS = 250L
+        private const val SEEK_FALLBACK_TIMEOUT_MS = 600L
+
         const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_TMDB_ID = "extra_tmdb_id"
