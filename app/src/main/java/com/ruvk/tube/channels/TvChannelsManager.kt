@@ -26,6 +26,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
+import com.ruvk.tube.data.api.tmdb.TmdbRepository
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
 import com.ruvk.tube.ui.details.DetailsActivity
@@ -73,7 +74,28 @@ object TvChannelsManager {
     )
 
     private val detailsCache = ConcurrentHashMap<String, CachedDetails>()
+    private val nextEpisodeCache = ConcurrentHashMap<String, Pair<TmdbRepository.NextEpisodeInfo?, Long>>()
     private const val DETAILS_CACHE_TTL_MS = 15 * 60 * 1000L
+
+    private suspend fun fetchCachedNextEpisode(
+        tmdbId: Long,
+        currentSeason: Int,
+        currentEpisode: Int
+    ): TmdbRepository.NextEpisodeInfo? {
+        val key = "$tmdbId:$currentSeason:$currentEpisode"
+        val now = System.currentTimeMillis()
+        nextEpisodeCache[key]?.let { (cached, expiresAt) ->
+            if (now < expiresAt) return cached
+        }
+        return tmdbSemaphore.withPermit {
+            nextEpisodeCache[key]?.let { (cached, expiresAt) ->
+                if (System.currentTimeMillis() < expiresAt) return@withPermit cached
+            }
+            val resolved = RuVkTubeApp.instance.tmdbRepository.getNextEpisode(tmdbId, currentSeason, currentEpisode)
+            nextEpisodeCache[key] = resolved to (System.currentTimeMillis() + DETAILS_CACHE_TTL_MS)
+            resolved
+        }
+    }
 
     private suspend fun fetchCachedDetails(tmdbId: Long, isTv: Boolean): CachedDetails? {
         val cacheKey = "${if (isTv) "TV" else "MOVIE"}:$tmdbId"
@@ -310,20 +332,33 @@ object TvChannelsManager {
                 val helper = PreviewChannelHelper(context)
                 val histEntities = RuVkTubeApp.instance.database.historyDao().getRecentHistoryList()
 
-                // Для сериалов сначала подтягиваем актуальный эпизод из episode_progress,
-                // и только затем отбираем незавершённые (> 5 сек и < 95% длительности)
-                val resolvedEntries = histEntities.mapNotNull { h ->
+                data class WatchNextTarget(
+                    val history: com.ruvk.tube.data.db.HistoryEntity,
+                    val isTv: Boolean,
+                    val watchNextType: Int,
+                    val posMs: Long,
+                    val durMs: Long,
+                    val season: Int,
+                    val episode: Int,
+                    val lastStream: String?,
+                    val episodeOverview: String? = null,
+                    val episodeRuntimeMin: Int = 0
+                )
+
+                val resolvedEntries = mutableListOf<WatchNextTarget>()
+                for (h in histEntities.take(15)) {
+                    if (resolvedEntries.size >= 10) break
                     val isTv = h.mediaType == MediaType.TV.name
                     var posMs = h.positionMs
                     var durMs = h.durationMs
-                    var lastStream = h.lastStreamUrl
+                    var lastStream: String? = h.lastStreamUrl
                     var sNum = h.season
                     var eNum = h.episode
 
                     if (isTv) {
                         val latestEp = RuVkTubeApp.instance.database.episodeProgressDao()
                             .getAllForShow(h.tmdbId).firstOrNull()
-                        if (latestEp != null && latestEp.positionMs > 5_000L) {
+                        if (latestEp != null && (latestEp.positionMs > 5_000L || latestEp.durationMs > 0L)) {
                             posMs = latestEp.positionMs
                             durMs = latestEp.durationMs
                             lastStream = latestEp.lastStreamUrl
@@ -332,11 +367,51 @@ object TvChannelsManager {
                         }
                     }
 
-                    val isInProgress = posMs > 5_000L && (durMs <= 0L || posMs < (durMs * 0.95).toLong())
-                    if (!isInProgress) return@mapNotNull null
+                    val isCompleted = durMs > 0L && posMs >= (durMs * 0.95).toLong()
+                    if (!isCompleted && posMs > 5_000L) {
+                        resolvedEntries.add(
+                            WatchNextTarget(
+                                history = h,
+                                isTv = isTv,
+                                watchNextType = TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE,
+                                posMs = posMs,
+                                durMs = durMs,
+                                season = sNum,
+                                episode = eNum,
+                                lastStream = lastStream
+                            )
+                        )
+                    } else if (isCompleted && isTv && sNum > 0 && eNum > 0) {
+                        val nextInfo = fetchCachedNextEpisode(h.tmdbId, sNum, eNum) ?: continue
+                        val nextEpProgress = RuVkTubeApp.instance.database.episodeProgressDao()
+                            .getProgress(h.tmdbId, nextInfo.seasonNumber, nextInfo.episode.episodeNumber)
+                        val nextDone = nextEpProgress != null &&
+                            nextEpProgress.durationMs > 0L &&
+                            nextEpProgress.positionMs >= (nextEpProgress.durationMs * 0.95).toLong()
+                        if (nextDone) continue
 
-                    Triple(h, isTv, listOf(posMs, durMs, sNum.toLong(), eNum.toLong()) to lastStream)
-                }.take(10)
+                        val nextInProgress = nextEpProgress != null && nextEpProgress.positionMs > 5_000L
+                        resolvedEntries.add(
+                            WatchNextTarget(
+                                history = h,
+                                isTv = true,
+                                watchNextType = if (nextInProgress) {
+                                    TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE
+                                } else {
+                                    TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_NEXT
+                                },
+                                posMs = if (nextInProgress) nextEpProgress!!.positionMs else 0L,
+                                durMs = if (nextInProgress) nextEpProgress!!.durationMs else 0L,
+                                season = nextInfo.seasonNumber,
+                                episode = nextInfo.episode.episodeNumber,
+                                lastStream = if (nextInProgress) nextEpProgress!!.lastStreamUrl else null,
+                                episodeOverview = nextInfo.episode.overview,
+                                episodeRuntimeMin = nextInfo.episode.durationMinutes.takeIf { it > 0 }
+                                    ?: nextInfo.runtimeFallbackMinutes
+                            )
+                        )
+                    }
+                }
 
                 // Запрашиваем уже опубликованные нами программы из системного Watch Next
                 val existingPrograms = mutableListOf<WatchNextProgram>()
@@ -374,20 +449,25 @@ object TvChannelsManager {
 
                 val existingMap = existingPrograms.associateBy { it.internalProviderId }.toMutableMap()
 
-                for ((h, isTv, progressPair) in resolvedEntries) {
-                    val nums = progressPair.first
-                    val posMs = nums[0]
-                    val durMs = nums[1]
-                    val sNum = nums[2].toInt()
-                    val eNum = nums[3].toInt()
-                    val lastStream = progressPair.second
+                for (target in resolvedEntries) {
+                    val h = target.history
+                    val isTv = target.isTv
+                    val posMs = target.posMs
+                    val durMs = target.durMs
+                    val sNum = target.season
+                    val eNum = target.episode
 
                     val internalId = "watch_next_${if (isTv) "TV" else "MOVIE"}_${h.tmdbId}"
                     val existing = existingMap.remove(internalId)
 
                     val details = fetchCachedDetails(h.tmdbId, isTv)
-                    val runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else (details?.runtimeMinutes ?: 0)
-                    val overview = (h.overview ?: "").ifBlank { details?.overview ?: "" }
+                    val runtimeMinutes = when {
+                        durMs > 0L -> (durMs / 60_000L).toInt()
+                        target.episodeRuntimeMin > 0 -> target.episodeRuntimeMin
+                        else -> details?.runtimeMinutes ?: 0
+                    }
+                    val overview = (target.episodeOverview?.takeIf { it.isNotBlank() } ?: h.overview ?: "")
+                        .ifBlank { details?.overview ?: "" }
                     val countryStr = h.country?.takeIf { it.isNotBlank() } ?: details?.country
 
                     val mediaItem = MediaItem(
@@ -405,7 +485,7 @@ object TvChannelsManager {
                         mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
                         watchPositionMs = posMs,
                         watchDurationMs = durMs,
-                        lastStreamUrl = lastStream,
+                        lastStreamUrl = target.lastStream,
                         lastSeason = sNum,
                         lastEpisode = eNum,
                         country = countryStr
@@ -429,7 +509,7 @@ object TvChannelsManager {
                     }
 
                     programBuilder
-                        .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
+                        .setWatchNextType(target.watchNextType)
                         .setLastEngagementTimeUtcMillis(h.updatedAt)
                         .setTitle(mediaItem.title)
                         .setDescription(descriptionText)
@@ -452,7 +532,7 @@ object TvChannelsManager {
                     if (duration > 0) {
                         programBuilder.setDurationMillis(duration)
                     }
-                    if (posMs > 0L) {
+                    if (target.watchNextType == TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE && posMs > 0L) {
                         programBuilder.setLastPlaybackPositionMillis(posMs.toInt())
                     }
 

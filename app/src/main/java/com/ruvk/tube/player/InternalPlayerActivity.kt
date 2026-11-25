@@ -6,6 +6,7 @@ import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -14,17 +15,26 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.ruvk.tube.R
 import com.ruvk.tube.RuVkTubeApp
+import com.ruvk.tube.data.api.tmdb.TmdbRepository
 import com.ruvk.tube.data.db.EpisodeProgressEntity
 import com.ruvk.tube.data.db.HistoryEntity
 import com.ruvk.tube.data.local.AppPreferences
+import com.ruvk.tube.domain.models.VideoSource
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -35,8 +45,17 @@ class InternalPlayerActivity : AppCompatActivity() {
     private lateinit var playerView: PlayerView
     private lateinit var bufferingBar: ProgressBar
     private lateinit var dimOverlay: View
+    private lateinit var seekIndicatorText: TextView
+    private lateinit var nextEpisodeOverlay: LinearLayout
+    private lateinit var nextEpisodeTitleView: TextView
+    private lateinit var nextEpisodeCountdownView: TextView
+    private lateinit var btnNextEpisodePlay: TextView
+    private lateinit var btnNextEpisodeCancel: TextView
+    private var titleView: TextView? = null
+    private var qualityView: TextView? = null
+
     private var exoPlayer: ExoPlayer? = null
-    private var trackSelector: androidx.media3.exoplayer.trackselection.DefaultTrackSelector? = null
+    private var trackSelector: DefaultTrackSelector? = null
     private var hasAppliedSafeConstraints = false
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
@@ -55,6 +74,7 @@ class InternalPlayerActivity : AppCompatActivity() {
     private var posterUrl: String? = null
     private var backdropUrl: String? = null
     private var movieTitle: String = ""
+    private var originalTitle: String = ""
     private var year: Int = 0
     private var rating: Double = 0.0
     private var overview: String? = null
@@ -62,6 +82,14 @@ class InternalPlayerActivity : AppCompatActivity() {
     private var season: Int = 0
     private var episode: Int = 0
     private var country: String? = null
+    private var preferredPlatform: String? = null
+    private var preferredVoiceover: String? = null
+
+    private var nextEpisodeJob: Job? = null
+    private var nextEpisodeSearchDeferred: Deferred<List<VideoSource>>? = null
+    private var currentNextEpisodeInfo: TmdbRepository.NextEpisodeInfo? = null
+    private var isNextEpisodeOverlayVisible: Boolean = false
+    private var isSwitchingNextEpisode: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,6 +105,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
         backdropUrl = intent.getStringExtra(EXTRA_BACKDROP_URL)
         movieTitle = intent.getStringExtra(EXTRA_MOVIE_TITLE) ?: title
+        originalTitle = intent.getStringExtra(EXTRA_ORIGINAL_TITLE) ?: ""
         year = intent.getIntExtra(EXTRA_YEAR, 0)
         rating = intent.getDoubleExtra(EXTRA_RATING, 0.0)
         overview = intent.getStringExtra(EXTRA_OVERVIEW)
@@ -84,14 +113,35 @@ class InternalPlayerActivity : AppCompatActivity() {
         season = intent.getIntExtra(EXTRA_SEASON, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
         country = intent.getStringExtra(EXTRA_COUNTRY)
+        preferredPlatform = intent.getStringExtra(EXTRA_PREFERRED_PLATFORM)
+        preferredVoiceover = intent.getStringExtra(EXTRA_PREFERRED_VOICEOVER)
 
         playerView = findViewById(R.id.player_view)
         playerView.controllerShowTimeoutMs = CONTROLLER_TIMEOUT_MS
         bufferingBar = findViewById(R.id.player_buffering)
         dimOverlay = findViewById(R.id.player_dim_overlay)
+        seekIndicatorText = findViewById(R.id.player_seek_indicator)
+        nextEpisodeOverlay = findViewById(R.id.next_episode_overlay)
+        nextEpisodeTitleView = findViewById(R.id.next_episode_title)
+        nextEpisodeCountdownView = findViewById(R.id.next_episode_countdown)
+        btnNextEpisodePlay = findViewById(R.id.btn_next_episode_play)
+        btnNextEpisodeCancel = findViewById(R.id.btn_next_episode_cancel)
 
-        val titleView = playerView.findViewById<TextView>(R.id.player_title)
-        val qualityView = playerView.findViewById<TextView>(R.id.player_quality_badge)
+        titleView = playerView.findViewById(R.id.player_title)
+        qualityView = playerView.findViewById(R.id.player_quality_badge)
+        updateHeaderUi()
+
+        btnNextEpisodePlay.setOnClickListener {
+            triggerImmediateNextEpisode()
+        }
+        btnNextEpisodeCancel.setOnClickListener {
+            cancelNextEpisodeFlow()
+        }
+
+        initPlayer()
+    }
+
+    private fun updateHeaderUi() {
         titleView?.text = if (season > 0 && episode > 0) {
             "$movieTitle (Сезон $season, Серия $episode)"
         } else {
@@ -103,8 +153,6 @@ class InternalPlayerActivity : AppCompatActivity() {
         } else {
             qualityView?.visibility = View.GONE
         }
-
-        initPlayer()
     }
 
     private fun resolveRefererForStream(url: String): String {
@@ -116,35 +164,35 @@ class InternalPlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun buildMediaSource(url: String): MediaSource {
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(com.ruvk.tube.data.network.NetworkClient.USER_AGENT)
+            .setDefaultRequestProperties(mapOf("Referer" to resolveRefererForStream(url)))
+        return DefaultMediaSourceFactory(httpDataSourceFactory)
+            .createMediaSource(MediaItem.fromUri(url))
+    }
+
     private fun initPlayer() {
         if (streamUrl.isBlank()) {
             finish()
             return
         }
 
-        val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-            .setUserAgent(com.ruvk.tube.data.network.NetworkClient.USER_AGENT)
-            .setDefaultRequestProperties(mapOf("Referer" to resolveRefererForStream(streamUrl)))
-
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(httpDataSourceFactory)
-
-        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
+        val renderersFactory = DefaultRenderersFactory(this)
             .setEnableDecoderFallback(true)
-            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
-        trackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(this)
+        trackSelector = DefaultTrackSelector(this)
         hasAppliedSafeConstraints = false
         hasReachedReady = false
         playbackFailed = false
 
         exoPlayer = ExoPlayer.Builder(this, renderersFactory)
-            .setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(trackSelector!!)
             .build().apply {
-            val mediaItem = MediaItem.fromUri(streamUrl)
+            val source = buildMediaSource(streamUrl)
             if (startPositionMs > 5_000L && !isTrailer) {
-                setMediaItem(mediaItem, startPositionMs)
+                setMediaSource(source, startPositionMs)
                 Toast.makeText(
                     this@InternalPlayerActivity,
                     "Продолжение просмотра с ${formatTime(startPositionMs)}",
@@ -154,7 +202,7 @@ class InternalPlayerActivity : AppCompatActivity() {
                     savePlaybackPositionInternal(isInitial = true, syncChannels = false)
                 }
             } else {
-                setMediaItem(mediaItem)
+                setMediaSource(source)
                 // Сначала читаем сохранённую позицию из БД, чтобы исключить гонку записи 0L поверх прогресса
                 if (!isTrailer && tmdbId > 0) {
                     lifecycleScope.launch {
@@ -205,7 +253,15 @@ class InternalPlayerActivity : AppCompatActivity() {
                             bufferingBar.visibility = View.GONE
                             cancelPauseDimTimer()
                             stopProgressTracking()
-                            if (isTrailer) finish()
+                            commitPendingSeek()
+                            if (isTrailer) {
+                                finish()
+                            } else {
+                                savePlaybackPositionInternal(syncChannels = true, forceEndPosition = true)
+                                if (mediaType == "TV" && season > 0 && episode > 0 && tmdbId > 0) {
+                                    startNextEpisodeFlow()
+                                }
+                            }
                         }
                         Player.STATE_IDLE -> bufferingBar.visibility = View.GONE
                     }
@@ -339,10 +395,61 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     private var seekHideJob: Job? = null
+    private var seekCommitJob: Job? = null
+    private var pendingSeekTargetMs: Long = -1L
+    private var seekStartPosMs: Long = -1L
 
     private fun cancelSeekHide() {
         seekHideJob?.cancel()
         seekHideJob = null
+    }
+
+    private fun commitPendingSeek() {
+        seekCommitJob?.cancel()
+        seekCommitJob = null
+        val target = pendingSeekTargetMs
+        pendingSeekTargetMs = -1L
+        seekStartPosMs = -1L
+        seekIndicatorText.visibility = View.GONE
+        if (target >= 0L) {
+            exoPlayer?.seekTo(target)
+        }
+    }
+
+    private fun handleSeekStep(deltaMs: Long) {
+        val player = exoPlayer ?: return
+        cancelSeekHide()
+        if (isDimmed) {
+            hideDimOverlay()
+        }
+        if (!player.isPlaying) {
+            startPauseDimTimer()
+        }
+
+        if (pendingSeekTargetMs < 0L) {
+            seekStartPosMs = player.currentPosition.coerceAtLeast(0L)
+            pendingSeekTargetMs = seekStartPosMs
+        }
+        val dur = player.duration
+        val next = pendingSeekTargetMs + deltaMs
+        pendingSeekTargetMs = if (dur > 0L) next.coerceIn(0L, dur) else next.coerceAtLeast(0L)
+
+        val diffSec = (pendingSeekTargetMs - seekStartPosMs) / 1000L
+        seekIndicatorText.text = if (diffSec >= 0L) "+$diffSec сек" else "$diffSec сек"
+        seekIndicatorText.visibility = View.VISIBLE
+
+        playerView.showController()
+
+        seekCommitJob?.cancel()
+        seekCommitJob = lifecycleScope.launch {
+            delay(SEEK_COALESCE_TIMEOUT_MS)
+            if (!isFinishing && !isDestroyed) {
+                commitPendingSeek()
+            }
+        }
+
+        // Резервный таймер автоскрытия для пультов без ACTION_UP (HDMI-CEC)
+        scheduleSeekHide(SEEK_FALLBACK_TIMEOUT_MS)
     }
 
     private fun scheduleSeekHide(delayMs: Long) {
@@ -350,18 +457,172 @@ class InternalPlayerActivity : AppCompatActivity() {
         seekHideJob = lifecycleScope.launch {
             delay(delayMs)
             if (!isFinishing && !isDestroyed) {
+                commitPendingSeek()
                 playerView.hideController()
             }
         }
     }
 
+    private fun startNextEpisodeFlow() {
+        if (isNextEpisodeOverlayVisible || isSwitchingNextEpisode || isFinishing || isDestroyed) return
+        nextEpisodeJob?.cancel()
+        nextEpisodeJob = lifecycleScope.launch {
+            val nextInfo = withContext(Dispatchers.IO) {
+                RuVkTubeApp.instance.tmdbRepository.getNextEpisode(tmdbId, season, episode)
+            } ?: return@launch
+
+            if (isFinishing || isDestroyed) return@launch
+            currentNextEpisodeInfo = nextInfo
+            isNextEpisodeOverlayVisible = true
+            playerView.hideController()
+
+            nextEpisodeTitleView.text = "S${nextInfo.seasonNumber}E${nextInfo.episode.episodeNumber} — ${nextInfo.episode.name}"
+            nextEpisodeCountdownView.text = "Автозапуск через 10 сек..."
+            nextEpisodeOverlay.visibility = View.VISIBLE
+            btnNextEpisodePlay.isEnabled = true
+            btnNextEpisodePlay.requestFocus()
+
+            val runtimeMin = if (nextInfo.episode.durationMinutes > 0) {
+                nextInfo.episode.durationMinutes
+            } else {
+                nextInfo.runtimeFallbackMinutes
+            }
+            val maxRes = DeviceCapabilityHelper.getMaxDisplayHeight(this@InternalPlayerActivity)
+            nextEpisodeSearchDeferred = async(Dispatchers.IO) {
+                RuVkTubeApp.instance.searchCoordinator.findEpisodeSources(
+                    title = movieTitle,
+                    seasonNumber = nextInfo.seasonNumber,
+                    episodeNumber = nextInfo.episode.episodeNumber,
+                    runtimeMinutes = runtimeMin,
+                    originalTitle = originalTitle.ifBlank { null },
+                    maxSupportedHeight = maxRes
+                )
+            }
+
+            for (sec in 10 downTo 1) {
+                if (!isNextEpisodeOverlayVisible || isFinishing || isDestroyed) return@launch
+                nextEpisodeCountdownView.text = "Автозапуск через $sec сек..."
+                delay(1000L)
+            }
+
+            if (isNextEpisodeOverlayVisible && !isFinishing && !isDestroyed) {
+                launchResolvedNextEpisode(nextInfo)
+            }
+        }
+    }
+
+    private fun triggerImmediateNextEpisode() {
+        val nextInfo = currentNextEpisodeInfo ?: return
+        if (isSwitchingNextEpisode) return
+        nextEpisodeJob?.cancel()
+        nextEpisodeJob = lifecycleScope.launch {
+            launchResolvedNextEpisode(nextInfo)
+        }
+    }
+
+    private suspend fun launchResolvedNextEpisode(nextInfo: TmdbRepository.NextEpisodeInfo) {
+        if (isSwitchingNextEpisode || isFinishing || isDestroyed) return
+        isSwitchingNextEpisode = true
+        btnNextEpisodePlay.isEnabled = false
+        nextEpisodeCountdownView.text = "Подбор потока..."
+
+        val sources = try {
+            nextEpisodeSearchDeferred?.await() ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        if (isFinishing || isDestroyed) {
+            isSwitchingNextEpisode = false
+            return
+        }
+
+        val best = pickBestSourceForNextEpisode(sources)
+        if (best != null) {
+            switchToNextEpisode(nextInfo, best)
+        } else {
+            hideNextEpisodeOverlay()
+            Toast.makeText(
+                this,
+                "Источники для S${nextInfo.seasonNumber}E${nextInfo.episode.episodeNumber} не найдены",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+        isSwitchingNextEpisode = false
+    }
+
+    private fun pickBestSourceForNextEpisode(sources: List<VideoSource>): VideoSource? {
+        if (sources.isEmpty()) return null
+        val voice = preferredVoiceover
+        val plat = preferredPlatform
+        return sources.firstOrNull { !voice.isNullOrBlank() && it.voiceover.equals(voice, ignoreCase = true) }
+            ?: sources.firstOrNull { !plat.isNullOrBlank() && it.platform.name.equals(plat, ignoreCase = true) }
+            ?: sources.first()
+    }
+
+    private fun switchToNextEpisode(nextInfo: TmdbRepository.NextEpisodeInfo, source: VideoSource) {
+        hideNextEpisodeOverlay()
+
+        streamUrl = source.streamUrl
+        season = nextInfo.seasonNumber
+        episode = nextInfo.episode.episodeNumber
+        quality = source.quality
+        preferredPlatform = source.platform.name
+        preferredVoiceover = source.voiceover
+        title = "$movieTitle (S${season}E${episode} - $quality)"
+        startPositionMs = 0L
+        isSavedStream = false
+        hasReachedReady = false
+        playbackFailed = false
+        hasAppliedSafeConstraints = false
+        trackSelector?.let { selector ->
+            selector.parameters = selector.parameters.buildUpon().clearVideoSizeConstraints().build()
+        }
+
+        updateHeaderUi()
+
+        exoPlayer?.let { player ->
+            player.setMediaSource(buildMediaSource(streamUrl), 0L)
+            player.prepare()
+            player.playWhenReady = true
+        }
+
+        if (tmdbId > 0) {
+            savePlaybackPositionInternal(isInitial = true, syncChannels = true)
+        }
+    }
+
+    private fun cancelNextEpisodeFlow() {
+        nextEpisodeJob?.cancel()
+        nextEpisodeJob = null
+        nextEpisodeSearchDeferred?.cancel()
+        nextEpisodeSearchDeferred = null
+        hideNextEpisodeOverlay()
+    }
+
+    private fun hideNextEpisodeOverlay() {
+        isNextEpisodeOverlayVisible = false
+        currentNextEpisodeInfo = null
+        nextEpisodeOverlay.visibility = View.GONE
+        btnNextEpisodePlay.isEnabled = true
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val player = exoPlayer ?: return super.dispatchKeyEvent(event)
+
+        if (isNextEpisodeOverlayVisible) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_BACK) {
+                cancelNextEpisodeFlow()
+                return true
+            }
+            return super.dispatchKeyEvent(event)
+        }
 
         if (event.action == KeyEvent.ACTION_DOWN) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     cancelSeekHide()
+                    commitPendingSeek()
                     if (isDimmed) {
                         hideDimOverlay()
                     }
@@ -391,44 +652,19 @@ class InternalPlayerActivity : AppCompatActivity() {
                 KeyEvent.KEYCODE_MEDIA_REWIND,
                 KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD,
                 KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD -> {
-                    cancelSeekHide()
-                    if (isDimmed) {
-                        hideDimOverlay()
-                    }
-                    if (!player.isPlaying) {
-                        startPauseDimTimer()
-                    }
-                    playerView.showController()
-                    player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
-                    // Резервный таймер автоскрытия для пультов без ACTION_UP (HDMI-CEC)
-                    scheduleSeekHide(SEEK_FALLBACK_TIMEOUT_MS)
+                    handleSeekStep(-10_000L)
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT,
                 KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
                 KeyEvent.KEYCODE_MEDIA_STEP_FORWARD,
                 KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD -> {
-                    cancelSeekHide()
-                    if (isDimmed) {
-                        hideDimOverlay()
-                    }
-                    if (!player.isPlaying) {
-                        startPauseDimTimer()
-                    }
-                    playerView.showController()
-                    val dur = player.duration
-                    val target = if (dur > 0) {
-                        (player.currentPosition + 10_000).coerceAtMost(dur)
-                    } else {
-                        player.currentPosition + 10_000
-                    }
-                    player.seekTo(target)
-                    // Резервный таймер автоскрытия для пультов без ACTION_UP (HDMI-CEC)
-                    scheduleSeekHide(SEEK_FALLBACK_TIMEOUT_MS)
+                    handleSeekStep(10_000L)
                     return true
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                     cancelSeekHide()
+                    commitPendingSeek()
                     if (isDimmed) {
                         hideDimOverlay()
                     }
@@ -445,6 +681,7 @@ class InternalPlayerActivity : AppCompatActivity() {
                 }
                 KeyEvent.KEYCODE_MEDIA_PLAY -> {
                     cancelSeekHide()
+                    commitPendingSeek()
                     if (isDimmed) {
                         hideDimOverlay()
                     }
@@ -455,6 +692,7 @@ class InternalPlayerActivity : AppCompatActivity() {
                 }
                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
                     cancelSeekHide()
+                    commitPendingSeek()
                     if (isDimmed) {
                         hideDimOverlay()
                     }
@@ -465,6 +703,7 @@ class InternalPlayerActivity : AppCompatActivity() {
                 }
                 KeyEvent.KEYCODE_BACK -> {
                     cancelSeekHide()
+                    commitPendingSeek()
                     if (isDimmed) {
                         hideDimOverlay()
                         if (!player.isPlaying) {
@@ -488,6 +727,13 @@ class InternalPlayerActivity : AppCompatActivity() {
                 KeyEvent.KEYCODE_MEDIA_STEP_FORWARD,
                 KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD,
                 KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD -> {
+                    seekCommitJob?.cancel()
+                    seekCommitJob = lifecycleScope.launch {
+                        delay(150L)
+                        if (!isFinishing && !isDestroyed) {
+                            commitPendingSeek()
+                        }
+                    }
                     // Моментальное скрытие интерфейса сразу по отпусканию кнопки перемотки
                     scheduleSeekHide(SEEK_RELEASE_TIMEOUT_MS)
                     return true
@@ -555,6 +801,7 @@ class InternalPlayerActivity : AppCompatActivity() {
 
     override fun onPause() {
         cancelSeekHide()
+        commitPendingSeek()
         cancelPauseDimTimer()
         stopProgressTracking()
         savePlaybackPositionInternal(syncChannels = false)
@@ -564,6 +811,7 @@ class InternalPlayerActivity : AppCompatActivity() {
 
     override fun onStop() {
         cancelSeekHide()
+        commitPendingSeek()
         cancelPauseDimTimer()
         stopProgressTracking()
         savePlaybackPositionInternal(syncChannels = true)
@@ -573,6 +821,8 @@ class InternalPlayerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelSeekHide()
+        commitPendingSeek()
+        cancelNextEpisodeFlow()
         cancelPauseDimTimer()
         stopProgressTracking()
         savePlaybackPositionInternal(isBlocking = true, syncChannels = false)
@@ -590,17 +840,22 @@ class InternalPlayerActivity : AppCompatActivity() {
     private fun savePlaybackPositionInternal(
         isInitial: Boolean = false,
         isBlocking: Boolean = false,
-        syncChannels: Boolean = false
+        syncChannels: Boolean = false,
+        forceEndPosition: Boolean = false
     ) {
         val player = exoPlayer
         if (isTrailer || tmdbId == 0L) return
         // Если поток упал до начала воспроизведения, не затираем сохранённый прогресс в БД
         if (playbackFailed && !hasReachedReady) return
 
-        val rawPosition = if (isInitial) startPositionMs else (player?.currentPosition ?: startPositionMs)
         val duration = player?.duration ?: 0L
-        var validPos = if (rawPosition > 0) rawPosition else 0L
         var validDur = if (duration > 0) duration else 0L
+        val rawPosition = when {
+            forceEndPosition && validDur > 0L -> validDur
+            isInitial -> startPositionMs
+            else -> player?.currentPosition ?: startPositionMs
+        }
+        var validPos = if (rawPosition > 0) rawPosition else 0L
 
         val now = System.currentTimeMillis()
         val action: suspend () -> Unit = {
@@ -685,6 +940,7 @@ class InternalPlayerActivity : AppCompatActivity() {
 
     companion object {
         private const val CONTROLLER_TIMEOUT_MS = 2000
+        private const val SEEK_COALESCE_TIMEOUT_MS = 280L
         private const val SEEK_RELEASE_TIMEOUT_MS = 250L
         private const val SEEK_FALLBACK_TIMEOUT_MS = 600L
 
@@ -698,6 +954,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_POSTER_URL = "extra_poster_url"
         const val EXTRA_BACKDROP_URL = "extra_backdrop_url"
         const val EXTRA_MOVIE_TITLE = "extra_movie_title"
+        const val EXTRA_ORIGINAL_TITLE = "extra_original_title"
         const val EXTRA_YEAR = "extra_year"
         const val EXTRA_RATING = "extra_rating"
         const val EXTRA_OVERVIEW = "extra_overview"
@@ -705,6 +962,8 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_SEASON = "extra_season"
         const val EXTRA_EPISODE = "extra_episode"
         const val EXTRA_COUNTRY = "extra_country"
+        const val EXTRA_PREFERRED_PLATFORM = "extra_preferred_platform"
+        const val EXTRA_PREFERRED_VOICEOVER = "extra_preferred_voiceover"
 
         const val EXTRA_RESULT_ACTION = "extra_result_action"
         const val ACTION_REFRESH_STREAM = "action_refresh_stream"

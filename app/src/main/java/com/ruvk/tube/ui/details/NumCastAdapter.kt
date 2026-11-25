@@ -13,6 +13,7 @@ import coil.load
 import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.domain.models.CastMember
+import com.ruvk.tube.ui.common.dispatchListDiff
 
 class NumCastAdapter(
     private val onCastMemberClick: (CastMember) -> Unit = {}
@@ -21,9 +22,11 @@ class NumCastAdapter(
     private val items = mutableListOf<CastMember>()
 
     fun submitList(newItems: List<CastMember>) {
-        items.clear()
-        items.addAll(newItems)
-        notifyDataSetChanged()
+        dispatchListDiff(
+            target = items,
+            newItems = newItems,
+            areItemsSame = { old, new -> old.id == new.id }
+        )
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CastViewHolder {

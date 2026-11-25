@@ -1,6 +1,6 @@
 {
-  "versionCode": 33,
-  "versionName": "1.2.12",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.12/RuVK-Hub-1.2.12.apk",
-  "changelog": "Ускорен поиск источников, исправлено возобновление устаревших ссылок, дозагрузка описаний из ТВ-поиска и стабильность синхронизации каналов."
+  "versionCode": 34,
+  "versionName": "1.2.13",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.13/RuVK-Hub-1.2.13.apk",
+  "changelog": "Автопереход серий и Play Next (следующая серия), поиск по плейлистам Rutube и альбомам VK (с исправлением кириллицы), плавная перемотка и DiffUtil-списки."
 }

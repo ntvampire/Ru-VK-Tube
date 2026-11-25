@@ -168,6 +168,8 @@ class SearchCoordinator(
     ): List<VideoSource> = coroutineScope {
         val rutubeResults = mutableListOf<VideoSource>()
         val vkResults = mutableListOf<VideoSource>()
+        val seenRutubeRaw = mutableListOf<RutubeVideoItem>()
+        val seenVkRaw = mutableListOf<VkVideoItem>()
         val targetSeconds = runtimeMinutes * 60
 
         val sPadded = seasonNumber.toString().padStart(2, '0')
@@ -190,6 +192,8 @@ class SearchCoordinator(
 
             val rutubeRaw = rutubeDeferred?.await() ?: emptyList()
             val vkRaw = vkDeferred?.await() ?: emptyList()
+            seenRutubeRaw.addAll(rutubeRaw)
+            seenVkRaw.addAll(vkRaw)
 
             val rutubeCandidates = rutubeRaw.filter { item ->
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
@@ -210,52 +214,10 @@ class SearchCoordinator(
             }.take((MAX_SOURCES_PER_PLATFORM - vkResults.size) + 4)
 
             val resolvedRutubeDeferred = async {
-                rutubeCandidates.map { item ->
-                    async {
-                        val streamUrl = rutubeClient.getStreamUrl(item.id) ?: return@async null
-                        val lowerTitle = item.title.lowercase(Locale.ROOT)
-                        val quality = detectRutubeQuality(streamUrl, lowerTitle)
-                        val voiceover = detectVoiceover(lowerTitle)
-                        val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.RUTUBE)
-                        VideoSource(
-                            platform = VideoPlatform.RUTUBE,
-                            title = item.title,
-                            streamUrl = streamUrl,
-                            quality = quality,
-                            durationSeconds = item.duration,
-                            voiceover = voiceover,
-                            isTrailer = false,
-                            score = score
-                        )
-                    }
-                }.awaitAll().filterNotNull()
+                resolveRutubeEpisodeCandidates(rutubeCandidates, seasonNumber, episodeNumber, maxSupportedHeight)
             }
-
             val resolvedVkDeferred = async {
-                vkCandidates.map { item ->
-                    async {
-                        val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: return@async null
-                        val streamUrl = streamInfo.hlsUrl
-                            ?: streamInfo.directUrls["1080"]
-                            ?: streamInfo.directUrls["720"]
-                            ?: streamInfo.directUrls["480"]
-                            ?: return@async null
-                        val lowerTitle = item.title.lowercase(Locale.ROOT)
-                        val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
-                        val voiceover = detectVoiceover(lowerTitle)
-                        val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.VK)
-                        VideoSource(
-                            platform = VideoPlatform.VK,
-                            title = item.title,
-                            streamUrl = streamUrl,
-                            quality = quality,
-                            durationSeconds = item.durationSeconds,
-                            voiceover = voiceover,
-                            isTrailer = false,
-                            score = score
-                        )
-                    }
-                }.awaitAll().filterNotNull()
+                resolveVkEpisodeCandidates(vkCandidates, seasonNumber, episodeNumber, maxSupportedHeight)
             }
 
             appendUniqueSources(rutubeResults, resolvedRutubeDeferred.await())
@@ -264,29 +226,250 @@ class SearchCoordinator(
             if (shouldStopEarly(rutubeResults, vkResults)) break
         }
 
+        // Этап 5: если поштучный поиск не нашёл серию, ищем через плейлисты Rutube и альбомы/связанные видео VK
+        val rutubePlaylistDeferred = if (rutubeResults.isEmpty()) {
+            async {
+                findRutubePlaylistEpisodes(
+                    title = title,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber,
+                    targetSeconds = targetSeconds,
+                    originalTitle = originalTitle,
+                    maxSupportedHeight = maxSupportedHeight,
+                    initialRawItems = seenRutubeRaw
+                )
+            }
+        } else null
+
+        val vkAlbumDeferred = if (vkResults.isEmpty()) {
+            async {
+                findVkAlbumEpisodes(
+                    title = title,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber,
+                    targetSeconds = targetSeconds,
+                    originalTitle = originalTitle,
+                    maxSupportedHeight = maxSupportedHeight,
+                    initialRawItems = seenVkRaw
+                )
+            }
+        } else null
+
+        rutubePlaylistDeferred?.await()?.let { appendUniqueSources(rutubeResults, it) }
+        vkAlbumDeferred?.await()?.let { appendUniqueSources(vkResults, it) }
+
         val allResults = (rutubeResults + vkResults).sortedByDescending { it.score }
         Log.d("RuVkTube", "findEpisodeSources for '$title S${seasonNumber}E${episodeNumber}': Rutube=${rutubeResults.size}, VK=${vkResults.size}")
         allResults
     }
 
-    private fun isEpisodeMatch(lowerTitle: String, seasonNumber: Int, episodeNumber: Int): Boolean {
+    private suspend fun resolveRutubeEpisodeCandidates(
+        candidates: List<RutubeVideoItem>,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        maxSupportedHeight: Int
+    ): List<VideoSource> = coroutineScope {
+        candidates.map { item ->
+            async {
+                val streamUrl = rutubeClient.getStreamUrl(item.id) ?: return@async null
+                val lowerTitle = item.title.lowercase(Locale.ROOT)
+                val quality = detectRutubeQuality(streamUrl, lowerTitle)
+                val voiceover = detectVoiceover(lowerTitle)
+                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.RUTUBE)
+                VideoSource(
+                    platform = VideoPlatform.RUTUBE,
+                    title = item.title,
+                    streamUrl = streamUrl,
+                    quality = quality,
+                    durationSeconds = item.duration,
+                    voiceover = voiceover,
+                    isTrailer = false,
+                    score = score
+                )
+            }
+        }.awaitAll().filterNotNull()
+    }
+
+    private suspend fun resolveVkEpisodeCandidates(
+        candidates: List<VkVideoItem>,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        maxSupportedHeight: Int
+    ): List<VideoSource> = coroutineScope {
+        candidates.map { item ->
+            async {
+                val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: return@async null
+                val streamUrl = streamInfo.hlsUrl
+                    ?: streamInfo.directUrls["1080"]
+                    ?: streamInfo.directUrls["720"]
+                    ?: streamInfo.directUrls["480"]
+                    ?: return@async null
+                val lowerTitle = item.title.lowercase(Locale.ROOT)
+                val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
+                val voiceover = detectVoiceover(lowerTitle)
+                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.VK)
+                VideoSource(
+                    platform = VideoPlatform.VK,
+                    title = item.title,
+                    streamUrl = streamUrl,
+                    quality = quality,
+                    durationSeconds = item.durationSeconds,
+                    voiceover = voiceover,
+                    isTrailer = false,
+                    score = score
+                )
+            }
+        }.awaitAll().filterNotNull()
+    }
+
+    private suspend fun findRutubePlaylistEpisodes(
+        title: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        targetSeconds: Int,
+        originalTitle: String?,
+        maxSupportedHeight: Int,
+        initialRawItems: List<RutubeVideoItem>
+    ): List<VideoSource> = coroutineScope {
+        val broadItems = initialRawItems.toMutableList()
+        if (broadItems.none { isTitleRelevant(it.title, title, originalTitle) && (it.author?.id ?: 0L) > 0L }) {
+            broadItems.addAll(rutubeClient.searchVideos("$title $seasonNumber сезон"))
+            if (broadItems.none { isTitleRelevant(it.title, title, originalTitle) && (it.author?.id ?: 0L) > 0L }) {
+                broadItems.addAll(rutubeClient.searchVideos(title))
+            }
+        }
+
+        val authorIds = broadItems
+            .filter { isTitleRelevant(it.title, title, originalTitle) && (it.author?.id ?: 0L) > 0L }
+            .mapNotNull { it.author?.id }
+            .distinct()
+            .take(4)
+
+        if (authorIds.isEmpty()) return@coroutineScope emptyList()
+
+        val playlists = authorIds.map { aid ->
+            async { rutubeClient.getUserPlaylists(aid) }
+        }.awaitAll().flatten()
+            .distinctBy { it.id }
+            .filter { pl ->
+                val plLower = pl.title.lowercase(Locale.ROOT)
+                (pl.videosCount == 0 || pl.videosCount >= episodeNumber) &&
+                    isTitleRelevant(pl.title, title, originalTitle) &&
+                    !hasConflictingSeason(plLower, seasonNumber)
+            }
+            .take(4)
+
+        if (playlists.isEmpty()) return@coroutineScope emptyList()
+
+        val matchedCandidates = playlists.map { pl ->
+            async {
+                val plLower = pl.title.lowercase(Locale.ROOT)
+                val plMatchesSeason = hasExplicitSeason(plLower, seasonNumber)
+                val videos = rutubeClient.getPlaylistVideos(pl.id)
+                videos.filter { item ->
+                    val lowerTitle = item.title.lowercase(Locale.ROOT)
+                    !movieStopWords.any { lowerTitle.contains(it) } &&
+                        !camRegex.containsMatchIn(lowerTitle) &&
+                        isPlaylistEpisodeMatch(lowerTitle, seasonNumber, episodeNumber, plMatchesSeason) &&
+                        isValidDuration(item.duration, targetSeconds, isEpisode = true, allowZeroDuration = false)
+                }
+            }
+        }.awaitAll().flatten().distinctBy { it.id }.take(8)
+
+        if (matchedCandidates.isEmpty()) return@coroutineScope emptyList()
+        resolveRutubeEpisodeCandidates(matchedCandidates, seasonNumber, episodeNumber, maxSupportedHeight)
+    }
+
+    private suspend fun findVkAlbumEpisodes(
+        title: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        targetSeconds: Int,
+        originalTitle: String?,
+        maxSupportedHeight: Int,
+        initialRawItems: List<VkVideoItem>
+    ): List<VideoSource> = coroutineScope {
+        val broadItems = initialRawItems.toMutableList()
+        broadItems.addAll(vkClient.searchVideos("$title $seasonNumber сезон"))
+        if (broadItems.none { isTitleRelevant(it.title, title, originalTitle) }) {
+            broadItems.addAll(vkClient.searchVideos(title))
+        }
+
+        val relevant = broadItems
+            .distinctBy { "${it.oid}_${it.id}" }
+            .filter { isTitleRelevant(it.title, title, originalTitle) }
+
+        val directCandidates = relevant.filter { item ->
+            val lowerTitle = item.title.lowercase(Locale.ROOT)
+            !movieStopWords.any { lowerTitle.contains(it) } &&
+                !camRegex.containsMatchIn(lowerTitle) &&
+                isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber) &&
+                isValidDuration(item.durationSeconds, targetSeconds, isEpisode = true, allowZeroDuration = true)
+        }.take(6)
+
+        if (directCandidates.isNotEmpty()) {
+            return@coroutineScope resolveVkEpisodeCandidates(directCandidates, seasonNumber, episodeNumber, maxSupportedHeight)
+        }
+
+        // Фолбэк: проверяем связанные видео (next_other_videos) из альбомов/плейлистов найденных роликов
+        val seeds = relevant
+            .sortedByDescending { !it.playlistId.isNullOrBlank() }
+            .take(3)
+
+        val relatedPool = seeds.map { seed ->
+            async { vkClient.resolveStream(seed.oid, seed.id)?.relatedVideos ?: emptyList() }
+        }.awaitAll().flatten()
+            .distinctBy { "${it.oid}_${it.id}" }
+            .filter { item ->
+                val lowerTitle = item.title.lowercase(Locale.ROOT)
+                !movieStopWords.any { lowerTitle.contains(it) } &&
+                    !camRegex.containsMatchIn(lowerTitle) &&
+                    isTitleRelevant(item.title, title, originalTitle) &&
+                    isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber) &&
+                    isValidDuration(item.durationSeconds, targetSeconds, isEpisode = true, allowZeroDuration = true)
+            }
+            .take(6)
+
+        if (relatedPool.isEmpty()) return@coroutineScope emptyList()
+        resolveVkEpisodeCandidates(relatedPool, seasonNumber, episodeNumber, maxSupportedHeight)
+    }
+
+    internal fun hasConflictingSeason(lowerTitle: String, seasonNumber: Int): Boolean {
+        val otherSeasonRegex = Regex("(?i)\\b(\\d+)\\s*(?:сезон|сез|season)\\b")
+        val matchSeason = otherSeasonRegex.find(lowerTitle) ?: return false
+        val foundSeason = matchSeason.groupValues[1].toIntOrNull()
+        return foundSeason != null && foundSeason != seasonNumber
+    }
+
+    private fun hasExplicitSeason(lowerTitle: String, seasonNumber: Int): Boolean {
+        val seasonRegex = Regex("(?i)\\b0?${seasonNumber}\\s*(?:сезон|сез|season)\\b")
+        return seasonRegex.containsMatchIn(lowerTitle)
+    }
+
+    internal fun isPlaylistEpisodeMatch(
+        lowerTitle: String,
+        seasonNumber: Int,
+        episodeNumber: Int,
+        playlistHasSeason: Boolean
+    ): Boolean {
+        if (isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber)) return true
+        if (!playlistHasSeason || hasConflictingSeason(lowerTitle, seasonNumber)) return false
+        if (lowerTitle.contains("все серии") || lowerTitle.contains("серии подряд")) return false
+        // Внутри плейлиста конкретного сезона ролики могут быть названы просто "02. Название" или "2"
+        val bareEpRegex = Regex("(?i)(?:^|\\s)0?${episodeNumber}(?:\\.|\\s|-|$)")
+        return bareEpRegex.containsMatchIn(lowerTitle)
+    }
+
+    internal fun isEpisodeMatch(lowerTitle: String, seasonNumber: Int, episodeNumber: Int): Boolean {
         // Исключаем сборники всех серий
         if (lowerTitle.contains("все серии") || lowerTitle.contains("серии подряд")) {
             return false
         }
 
         // Проверяем явное указание другого сезона (если сезон > 1 или в названии есть "сезон")
-        val otherSeasonRegex = Regex("(?i)\\b(\\d+)\\s*(?:сезон|сез|season)\\b")
-        val matchSeason = otherSeasonRegex.find(lowerTitle)
-        if (matchSeason != null) {
-            val foundSeason = matchSeason.groupValues[1].toIntOrNull()
-            if (foundSeason != null && foundSeason != seasonNumber) {
-                return false
-            }
+        if (hasConflictingSeason(lowerTitle, seasonNumber)) {
+            return false
         }
-
-        val sPadded = seasonNumber.toString().padStart(2, '0')
-        val ePadded = episodeNumber.toString().padStart(2, '0')
 
         // 1. Шаблон S01E02 или S1E2
         val sxxExxPattern = Regex("(?i)\\bs0?${seasonNumber}\\s*e0?${episodeNumber}\\b")

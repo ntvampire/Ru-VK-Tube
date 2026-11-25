@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.ruvk.tube.R
 import com.ruvk.tube.domain.models.VideoPlatform
 import com.ruvk.tube.domain.models.VideoSource
+import com.ruvk.tube.ui.common.dispatchListDiff
 
 class NumSourceAdapter(
     private val onItemClicked: (VideoSource) -> Unit
@@ -17,9 +18,11 @@ class NumSourceAdapter(
     private val items = mutableListOf<VideoSource>()
 
     fun submitList(newItems: List<VideoSource>) {
-        items.clear()
-        items.addAll(newItems)
-        notifyDataSetChanged()
+        dispatchListDiff(
+            target = items,
+            newItems = newItems,
+            areItemsSame = { old, new -> old.platform == new.platform && old.streamUrl == new.streamUrl }
+        )
     }
 
     fun getItems(): List<VideoSource> = items

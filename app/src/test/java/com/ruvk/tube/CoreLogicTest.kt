@@ -2,6 +2,7 @@ package com.ruvk.tube
 
 import com.ruvk.tube.data.network.TmdbDns
 import com.ruvk.tube.data.update.UpdateManager
+import com.ruvk.tube.domain.search.SearchCoordinator
 import com.ruvk.tube.player.DeviceCapabilityHelper
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -72,5 +73,18 @@ class CoreLogicTest {
         assertEquals(1080, DeviceCapabilityHelper.qualityToHeight("1080p"))
         assertEquals(720, DeviceCapabilityHelper.qualityToHeight("720p"))
         assertEquals(480, DeviceCapabilityHelper.qualityToHeight("480p"))
+    }
+
+    @Test
+    fun `search coordinator matches episode and playlist patterns accurately`() {
+        val coordinator = SearchCoordinator()
+        assertTrue(coordinator.isEpisodeMatch("во все тяжкие 1 сезон 2 серия", 1, 2))
+        assertTrue(coordinator.isEpisodeMatch("breaking bad s01e02", 1, 2))
+        assertFalse(coordinator.isEpisodeMatch("во все тяжкие 2 сезон 2 серия", 1, 2))
+        assertFalse(coordinator.isEpisodeMatch("во все тяжкие 1 сезон все серии подряд", 1, 2))
+
+        assertTrue(coordinator.isPlaylistEpisodeMatch("02. пилот", 1, 2, playlistHasSeason = true))
+        assertTrue(coordinator.isPlaylistEpisodeMatch("серия 2", 1, 2, playlistHasSeason = false))
+        assertFalse(coordinator.isPlaylistEpisodeMatch("02. пилот", 1, 2, playlistHasSeason = false))
     }
 }

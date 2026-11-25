@@ -658,8 +658,13 @@ class DetailsActivity : FragmentActivity() {
 
     private fun bindSeasons(seasons: List<TvSeason>) {
         if (seasons.isEmpty()) return
-        val targetSeason = if (savedSeason > 0 && seasons.any { it.seasonNumber == savedSeason }) {
-            savedSeason
+        val preferredSeason = when {
+            savedSeason > 0 -> savedSeason
+            currentSeasonNumber > 0 -> currentSeasonNumber
+            else -> 0
+        }
+        val targetSeason = if (preferredSeason > 0 && seasons.any { it.seasonNumber == preferredSeason }) {
+            preferredSeason
         } else {
             seasons.firstOrNull { it.seasonNumber > 0 }?.seasonNumber ?: seasons.first().seasonNumber
         }
@@ -691,9 +696,14 @@ class DetailsActivity : FragmentActivity() {
                     episodeAdapter.submitList(episodes)
                     episodesGridView.visibility = View.VISIBLE
 
-                    // Если открыт сезон с последней просмотренной серией, позиционируем курсор на неё
-                    if (seasonNumber == savedSeason && savedEpisode > 0) {
-                        val targetIdx = episodes.indexOfFirst { it.episodeNumber == savedEpisode }
+                    // Позиционируем курсор на сохранённую или целевую (из Play Next) серию
+                    val targetEpisode = when {
+                        seasonNumber == savedSeason && savedEpisode > 0 -> savedEpisode
+                        seasonNumber == currentSeasonNumber && currentEpisodeNumber > 0 -> currentEpisodeNumber
+                        else -> 0
+                    }
+                    if (targetEpisode > 0) {
+                        val targetIdx = episodes.indexOfFirst { it.episodeNumber == targetEpisode }
                         if (targetIdx >= 0) {
                             episodesGridView.post {
                                 episodesGridView.setSelectedPosition(targetIdx)
@@ -954,11 +964,14 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_POSTER_URL, item.posterUrl)
             putExtra(InternalPlayerActivity.EXTRA_BACKDROP_URL, item.backdropUrl)
             putExtra(InternalPlayerActivity.EXTRA_MOVIE_TITLE, item.title)
+            putExtra(InternalPlayerActivity.EXTRA_ORIGINAL_TITLE, item.originalTitle)
             putExtra(InternalPlayerActivity.EXTRA_YEAR, item.year)
             putExtra(InternalPlayerActivity.EXTRA_RATING, item.voteAverage)
             putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
             putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
             putExtra(InternalPlayerActivity.EXTRA_COUNTRY, item.country)
+            putExtra(InternalPlayerActivity.EXTRA_PREFERRED_PLATFORM, source.platform.name)
+            putExtra(InternalPlayerActivity.EXTRA_PREFERRED_VOICEOVER, source.voiceover)
             if (isTv) {
                 putExtra(InternalPlayerActivity.EXTRA_SEASON, currentSeasonNumber)
                 putExtra(InternalPlayerActivity.EXTRA_EPISODE, currentEpisodeNumber)
@@ -986,6 +999,7 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_POSTER_URL, item.posterUrl)
             putExtra(InternalPlayerActivity.EXTRA_BACKDROP_URL, item.backdropUrl)
             putExtra(InternalPlayerActivity.EXTRA_MOVIE_TITLE, item.title)
+            putExtra(InternalPlayerActivity.EXTRA_ORIGINAL_TITLE, item.originalTitle)
             putExtra(InternalPlayerActivity.EXTRA_YEAR, item.year)
             putExtra(InternalPlayerActivity.EXTRA_RATING, item.voteAverage)
             putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
@@ -1013,16 +1027,25 @@ class DetailsActivity : FragmentActivity() {
                 if (isTv) {
                     val latestEp = RuVkTubeApp.instance.database.episodeProgressDao().getAllForShow(tmdbId).firstOrNull()
                     val hist = RuVkTubeApp.instance.database.historyDao().getByTmdbId(tmdbId)
-                    if (latestEp != null && latestEp.positionMs > 5_000L) {
+                    val epCompleted = latestEp != null &&
+                        latestEp.durationMs > 0L &&
+                        latestEp.positionMs >= (latestEp.durationMs * 0.95).toLong()
+                    if (latestEp != null && !epCompleted && latestEp.positionMs > 5_000L) {
                         SavedProgress(latestEp.positionMs, latestEp.lastStreamUrl, latestEp.season, latestEp.episode)
-                    } else if (hist != null && hist.positionMs > 5_000L) {
-                        SavedProgress(hist.positionMs, hist.lastStreamUrl, hist.season, hist.episode)
+                    } else if (latestEp == null && hist != null && hist.positionMs > 5_000L) {
+                        val histCompleted = hist.durationMs > 0L && hist.positionMs >= (hist.durationMs * 0.95).toLong()
+                        if (!histCompleted) {
+                            SavedProgress(hist.positionMs, hist.lastStreamUrl, hist.season, hist.episode)
+                        } else {
+                            SavedProgress(0L, "", 0, 0)
+                        }
                     } else {
                         SavedProgress(0L, "", 0, 0)
                     }
                 } else {
                     val hist = RuVkTubeApp.instance.database.historyDao().getByTmdbId(tmdbId)
-                    if (hist != null && hist.positionMs > 5_000L) {
+                    val histCompleted = hist != null && hist.durationMs > 0L && hist.positionMs >= (hist.durationMs * 0.95).toLong()
+                    if (hist != null && !histCompleted && hist.positionMs > 5_000L) {
                         SavedProgress(hist.positionMs, hist.lastStreamUrl, 0, 0)
                     } else {
                         SavedProgress(0L, "", 0, 0)

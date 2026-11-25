@@ -167,6 +167,46 @@ class TmdbRepository {
         } ?: emptyList()
     }
 
+    data class NextEpisodeInfo(
+        val seasonNumber: Int,
+        val episode: TvEpisode,
+        val runtimeFallbackMinutes: Int = 0
+    )
+
+    /**
+     * Находит следующую серию в текущем сезоне либо первую серию следующего сезона.
+     */
+    suspend fun getNextEpisode(tvId: Long, currentSeason: Int, currentEpisode: Int): NextEpisodeInfo? {
+        return try {
+            val currentEpisodes = getSeasonEpisodes(tvId, currentSeason)
+            val nextInSeason = currentEpisodes
+                .filter { it.episodeNumber > currentEpisode }
+                .minByOrNull { it.episodeNumber }
+            if (nextInSeason != null) {
+                return NextEpisodeInfo(
+                    seasonNumber = currentSeason,
+                    episode = nextInSeason,
+                    runtimeFallbackMinutes = nextInSeason.durationMinutes
+                )
+            }
+
+            val tvDetails = getTvDetails(tvId)
+            val nextSeason = tvDetails.seasons
+                .filter { it.seasonNumber > currentSeason && it.episodeCount > 0 }
+                .minByOrNull { it.seasonNumber } ?: return null
+
+            val nextSeasonEpisodes = getSeasonEpisodes(tvId, nextSeason.seasonNumber)
+            val firstEp = nextSeasonEpisodes.minByOrNull { it.episodeNumber } ?: return null
+            NextEpisodeInfo(
+                seasonNumber = nextSeason.seasonNumber,
+                episode = firstEp,
+                runtimeFallbackMinutes = tvDetails.runtimeMinutes
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     suspend fun search(query: String, page: Int = 1): List<MediaItem> {
         val response = api.searchMulti(effectiveApiKey, query, page = page)
         return response.results

@@ -15,6 +15,7 @@ import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.domain.models.MediaItem
 import com.ruvk.tube.domain.models.MediaType
+import com.ruvk.tube.ui.common.dispatchListDiff
 
 class NumPosterAdapter(
     private val onItemFocused: (MediaItem) -> Unit,
@@ -24,9 +25,11 @@ class NumPosterAdapter(
     private val items = mutableListOf<MediaItem>()
 
     fun submitList(newItems: List<MediaItem>) {
-        items.clear()
-        items.addAll(newItems)
-        notifyDataSetChanged()
+        dispatchListDiff(
+            target = items,
+            newItems = newItems,
+            areItemsSame = { old, new -> old.id == new.id && old.mediaType == new.mediaType }
+        )
     }
 
     fun appendList(newItems: List<MediaItem>) {

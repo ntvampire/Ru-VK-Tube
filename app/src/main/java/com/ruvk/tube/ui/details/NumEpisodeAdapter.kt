@@ -15,6 +15,7 @@ import coil.transform.RoundedCornersTransformation
 import com.ruvk.tube.R
 import com.ruvk.tube.data.db.EpisodeProgressEntity
 import com.ruvk.tube.domain.models.TvEpisode
+import com.ruvk.tube.ui.common.dispatchListDiff
 
 class NumEpisodeAdapter(
     var defaultBackdropUrl: String? = null,
@@ -25,14 +26,23 @@ class NumEpisodeAdapter(
     private var progressMap = mapOf<Int, EpisodeProgressEntity>()
 
     fun submitList(newItems: List<TvEpisode>) {
-        items.clear()
-        items.addAll(newItems)
-        notifyDataSetChanged()
+        dispatchListDiff(
+            target = items,
+            newItems = newItems,
+            areItemsSame = { old, new -> old.episodeNumber == new.episodeNumber && old.seasonNumber == new.seasonNumber }
+        )
     }
 
     fun setProgressList(list: List<EpisodeProgressEntity>) {
-        progressMap = list.associateBy { it.episode }
-        notifyDataSetChanged()
+        val oldMap = progressMap
+        val newMap = list.associateBy { it.episode }
+        if (oldMap == newMap) return
+        progressMap = newMap
+        items.forEachIndexed { index, episode ->
+            if (oldMap[episode.episodeNumber] != newMap[episode.episodeNumber]) {
+                notifyItemChanged(index)
+            }
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): EpisodeViewHolder {

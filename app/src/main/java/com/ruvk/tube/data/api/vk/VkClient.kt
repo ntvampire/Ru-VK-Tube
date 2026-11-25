@@ -18,13 +18,15 @@ data class VkVideoItem(
     val id: String,
     val title: String,
     val durationSeconds: Int,
-    val thumbUrl: String?
+    val thumbUrl: String?,
+    val playlistId: String? = null
 )
 
 data class VkStreamInfo(
     val hlsUrl: String?,
     val directUrls: Map<String, String>, // "2160", "1080", "720", etc.
-    val bestQuality: String
+    val bestQuality: String,
+    val relatedVideos: List<VkVideoItem> = emptyList()
 )
 
 /**
@@ -44,7 +46,8 @@ class VkClient(
     }
 
     suspend fun searchVideos(query: String): List<VkVideoItem> = withContext(Dispatchers.IO) {
-        val formBody = FormBody.Builder(CP1251)
+        // al_video.php ожидает параметры POST-запроса в UTF-8 (при CP1251 кириллический поиск игнорируется)
+        val formBody = FormBody.Builder()
             .add("al", "1")
             .add("act", "search_video")
             .add("q", query)
@@ -59,18 +62,20 @@ class VkClient(
             .build()
 
         try {
-            val response = okHttpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                Log.e(TAG, "VK search HTTP error ${response.code} for '$query'")
-                return@withContext emptyList()
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "VK search HTTP error ${response.code} for '$query'")
+                    return@withContext emptyList()
+                }
+
+                val bodyBytes = response.body?.bytes() ?: return@withContext emptyList()
+                val charset = response.body?.contentType()?.charset(CP1251) ?: CP1251
+                val jsonText = String(bodyBytes, charset)
+
+                val items = parseSearchPayload(jsonText)
+                Log.d(TAG, "VK search for '$query': successfully returned ${items.size} videos")
+                items
             }
-
-            val bodyBytes = response.body?.bytes() ?: return@withContext emptyList()
-            val jsonText = String(bodyBytes, CP1251)
-
-            val items = parseSearchPayload(jsonText)
-            Log.d(TAG, "VK search for '$query': successfully returned ${items.size} videos")
-            items
         } catch (e: Exception) {
             Log.e(TAG, "VK search network error for '$query'", e)
             emptyList()
@@ -79,7 +84,7 @@ class VkClient(
 
     suspend fun resolveStream(oid: String, id: String): VkStreamInfo? = withContext(Dispatchers.IO) {
         val videoKey = "${oid}_${id}"
-        val formBody = FormBody.Builder(CP1251)
+        val formBody = FormBody.Builder()
             .add("al", "1")
             .add("act", "show")
             .add("video", videoKey)
@@ -94,16 +99,18 @@ class VkClient(
             .build()
 
         try {
-            val response = okHttpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                Log.e(TAG, "VK resolveStream HTTP error ${response.code} for $videoKey")
-                return@withContext null
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "VK resolveStream HTTP error ${response.code} for $videoKey")
+                    return@withContext null
+                }
+
+                val bodyBytes = response.body?.bytes() ?: return@withContext null
+                val charset = response.body?.contentType()?.charset(CP1251) ?: CP1251
+                val jsonText = String(bodyBytes, charset)
+
+                parsePlayerPayload(jsonText)
             }
-
-            val bodyBytes = response.body?.bytes() ?: return@withContext null
-            val jsonText = String(bodyBytes, CP1251)
-
-            parsePlayerPayload(jsonText)
         } catch (e: Exception) {
             Log.e(TAG, "VK resolveStream error for $videoKey", e)
             null
@@ -135,7 +142,10 @@ class VkClient(
                 val cleanTitle = cleanHtmlEntities(rawTitle)
 
                 var durationSec = 0
-                if (arr.size() > 5 && arr.get(5).isJsonPrimitive) {
+                if (arr.size() > 19 && arr.get(19).isJsonPrimitive) {
+                    durationSec = runCatching { arr.get(19).asInt }.getOrDefault(0)
+                }
+                if (durationSec == 0 && arr.size() > 5 && arr.get(5).isJsonPrimitive) {
                     durationSec = parseDurationString(arr.get(5).asString)
                 }
                 if (durationSec == 0 && arr.size() > 14 && arr.get(14).isJsonObject) {
@@ -145,6 +155,11 @@ class VkClient(
                     }
                 }
 
+                val playlistId = if (arr.size() > 20 && arr.get(20).isJsonPrimitive) {
+                    val href = arr.get(20).asString
+                    Regex("[?&]pl=([^&\\s]+)").find(href)?.groupValues?.getOrNull(1)
+                } else null
+
                 if (cleanTitle.isNotBlank()) {
                     items.add(
                         VkVideoItem(
@@ -152,7 +167,8 @@ class VkClient(
                             id = id,
                             title = cleanTitle,
                             durationSeconds = durationSec,
-                            thumbUrl = thumb
+                            thumbUrl = thumb,
+                            playlistId = playlistId
                         )
                     )
                 }
@@ -197,10 +213,37 @@ class VkClient(
                 else -> "SD"
             }
 
+            val relatedVideos = mutableListOf<VkVideoItem>()
+            val mvData = opts.getAsJsonObject("mvData")
+            val nextOther = mvData?.getAsJsonArray("next_other_videos")
+            if (nextOther != null) {
+                for (elem in nextOther) {
+                    if (!elem.isJsonObject) continue
+                    val obj = elem.asJsonObject
+                    val vidRaw = obj.get("vid")?.asString ?: continue
+                    val parts = vidRaw.split("_")
+                    if (parts.size != 2) continue
+                    val relTitle = cleanHtmlEntities(obj.get("title")?.asString ?: "")
+                    if (relTitle.isBlank()) continue
+                    val relDur = parseDurationString(obj.get("duration")?.asString ?: "")
+                    val relThumb = obj.get("thumb")?.asString
+                    relatedVideos.add(
+                        VkVideoItem(
+                            oid = parts[0],
+                            id = parts[1],
+                            title = relTitle,
+                            durationSeconds = relDur,
+                            thumbUrl = relThumb
+                        )
+                    )
+                }
+            }
+
             VkStreamInfo(
                 hlsUrl = hls,
                 directUrls = directUrls,
-                bestQuality = bestQuality
+                bestQuality = bestQuality,
+                relatedVideos = relatedVideos
             )
         } catch (e: Exception) {
             Log.e(TAG, "VK parsePlayerPayload error", e)
