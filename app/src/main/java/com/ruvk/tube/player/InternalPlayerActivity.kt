@@ -1,5 +1,7 @@
 package com.ruvk.tube.player
 
+import android.app.Activity
+import android.content.Intent
 import android.media.audiofx.LoudnessEnhancer
 import android.os.Bundle
 import android.view.KeyEvent
@@ -12,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.ruvk.tube.R
@@ -39,6 +42,9 @@ class InternalPlayerActivity : AppCompatActivity() {
 
     private var isDimmed = false
     private var pauseDimJob: Job? = null
+    private var hasReachedReady = false
+    private var playbackFailed = false
+    private var isSavedStream = false
 
     private var streamUrl: String = ""
     private var title: String = ""
@@ -64,9 +70,10 @@ class InternalPlayerActivity : AppCompatActivity() {
         streamUrl = intent.getStringExtra(EXTRA_STREAM_URL) ?: ""
         title = intent.getStringExtra(EXTRA_TITLE) ?: ""
         tmdbId = intent.getLongExtra(EXTRA_TMDB_ID, 0)
-        quality = intent.getStringExtra(EXTRA_QUALITY) ?: "Auto"
+        quality = intent.getStringExtra(EXTRA_QUALITY) ?: ""
         startPositionMs = intent.getLongExtra(EXTRA_START_POSITION_MS, 0)
         isTrailer = intent.getBooleanExtra(EXTRA_IS_TRAILER, false)
+        isSavedStream = intent.getBooleanExtra(EXTRA_IS_SAVED_STREAM, false)
         posterUrl = intent.getStringExtra(EXTRA_POSTER_URL)
         backdropUrl = intent.getStringExtra(EXTRA_BACKDROP_URL)
         movieTitle = intent.getStringExtra(EXTRA_MOVIE_TITLE) ?: title
@@ -90,9 +97,23 @@ class InternalPlayerActivity : AppCompatActivity() {
         } else {
             title
         }
-        qualityView?.text = quality
+        if (quality.isNotBlank()) {
+            qualityView?.visibility = View.VISIBLE
+            qualityView?.text = quality
+        } else {
+            qualityView?.visibility = View.GONE
+        }
 
         initPlayer()
+    }
+
+    private fun resolveRefererForStream(url: String): String {
+        val lower = url.lowercase()
+        return if (lower.contains("rutube") || lower.contains("rtbcdn")) {
+            "https://rutube.ru/"
+        } else {
+            "https://vk.com/"
+        }
     }
 
     private fun initPlayer() {
@@ -103,7 +124,7 @@ class InternalPlayerActivity : AppCompatActivity() {
 
         val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setUserAgent(com.ruvk.tube.data.network.NetworkClient.USER_AGENT)
-            .setDefaultRequestProperties(mapOf("Referer" to "https://vk.com/"))
+            .setDefaultRequestProperties(mapOf("Referer" to resolveRefererForStream(streamUrl)))
 
         val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
             .setDataSourceFactory(httpDataSourceFactory)
@@ -114,6 +135,8 @@ class InternalPlayerActivity : AppCompatActivity() {
 
         trackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(this)
         hasAppliedSafeConstraints = false
+        hasReachedReady = false
+        playbackFailed = false
 
         exoPlayer = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
@@ -127,37 +150,39 @@ class InternalPlayerActivity : AppCompatActivity() {
                     "Продолжение просмотра с ${formatTime(startPositionMs)}",
                     Toast.LENGTH_SHORT
                 ).show()
+                if (tmdbId > 0) {
+                    savePlaybackPositionInternal(isInitial = true, syncChannels = false)
+                }
             } else {
                 setMediaItem(mediaItem)
-            }
-            prepare()
-
-            // Гарантированно фиксируем фильм в истории сразу при открытии плеера
-            if (!isTrailer && tmdbId > 0) {
-                savePlaybackPositionInternal(isInitial = true)
-            }
-
-            if (startPositionMs == 0L && !isTrailer && tmdbId > 0) {
-                lifecycleScope.launch {
-                    val savedPos = withContext(Dispatchers.IO) {
-                        if (mediaType == "TV" && season > 0 && episode > 0) {
-                            RuVkTubeApp.instance.database.episodeProgressDao()
-                                .getProgress(tmdbId, season, episode)?.positionMs ?: 0L
-                        } else {
-                            RuVkTubeApp.instance.database.historyDao()
-                                .getByTmdbId(tmdbId)?.positionMs ?: 0L
+                // Сначала читаем сохранённую позицию из БД, чтобы исключить гонку записи 0L поверх прогресса
+                if (!isTrailer && tmdbId > 0) {
+                    lifecycleScope.launch {
+                        val savedPos = withContext(Dispatchers.IO) {
+                            if (mediaType == "TV" && season > 0 && episode > 0) {
+                                RuVkTubeApp.instance.database.episodeProgressDao()
+                                    .getProgress(tmdbId, season, episode)?.positionMs ?: 0L
+                            } else {
+                                RuVkTubeApp.instance.database.historyDao()
+                                    .getByTmdbId(tmdbId)?.positionMs ?: 0L
+                            }
                         }
-                    }
-                    if (savedPos > 5_000L) {
-                        exoPlayer?.seekTo(savedPos)
-                        Toast.makeText(
-                            this@InternalPlayerActivity,
-                            "Продолжение просмотра с ${formatTime(savedPos)}",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        if (savedPos > 5_000L && !playbackFailed) {
+                            startPositionMs = savedPos
+                            exoPlayer?.seekTo(savedPos)
+                            Toast.makeText(
+                                this@InternalPlayerActivity,
+                                "Продолжение просмотра с ${formatTime(savedPos)}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        if (!playbackFailed) {
+                            savePlaybackPositionInternal(isInitial = true, syncChannels = false)
+                        }
                     }
                 }
             }
+            prepare()
             playWhenReady = true
 
             addListener(object : Player.Listener {
@@ -172,7 +197,10 @@ class InternalPlayerActivity : AppCompatActivity() {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         Player.STATE_BUFFERING -> bufferingBar.visibility = View.VISIBLE
-                        Player.STATE_READY -> bufferingBar.visibility = View.GONE
+                        Player.STATE_READY -> {
+                            hasReachedReady = true
+                            bufferingBar.visibility = View.GONE
+                        }
                         Player.STATE_ENDED -> {
                             bufferingBar.visibility = View.GONE
                             cancelPauseDimTimer()
@@ -189,15 +217,19 @@ class InternalPlayerActivity : AppCompatActivity() {
                         startProgressTracking()
                     } else {
                         stopProgressTracking()
-                        savePlaybackPositionInternal()
+                        if (hasReachedReady) {
+                            savePlaybackPositionInternal(syncChannels = false)
+                        }
                         startPauseDimTimer()
                     }
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    playbackFailed = true
                     bufferingBar.visibility = View.GONE
                     cancelPauseDimTimer()
                     stopProgressTracking()
+                    handlePlaybackError(error)
                 }
             })
         }
@@ -207,6 +239,47 @@ class InternalPlayerActivity : AppCompatActivity() {
         }
 
         playerView.player = exoPlayer
+    }
+
+    private fun handlePlaybackError(error: PlaybackException) {
+        if (isFinishing || isDestroyed) return
+        val httpCause = error.cause as? HttpDataSource.InvalidResponseCodeException
+        android.util.Log.e(
+            "InternalPlayer",
+            "Playback error: ${error.errorCodeName}, httpCode=${httpCause?.responseCode}, isSaved=$isSavedStream, ready=$hasReachedReady",
+            error
+        )
+
+        if (isSavedStream && !hasReachedReady && !isTrailer) {
+            Toast.makeText(
+                this,
+                "Сохранённая ссылка устарела — открываем поиск источников",
+                Toast.LENGTH_LONG
+            ).show()
+            setResult(
+                Activity.RESULT_OK,
+                Intent().apply {
+                    putExtra(EXTRA_RESULT_ACTION, ACTION_REFRESH_STREAM)
+                    putExtra(EXTRA_SEASON, season)
+                    putExtra(EXTRA_EPISODE, episode)
+                }
+            )
+            finish()
+            return
+        }
+
+        val reason = when {
+            httpCause != null -> "HTTP ${httpCause.responseCode}"
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+                "нет ответа от сервера"
+            else -> error.errorCodeName
+        }
+        Toast.makeText(
+            this,
+            "Ошибка воспроизведения ($reason). Попробуйте другой источник.",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun checkAndApplySafeVideoConstraints(tracks: androidx.media3.common.Tracks) {
@@ -242,7 +315,7 @@ class InternalPlayerActivity : AppCompatActivity() {
             while (isActive) {
                 delay(5000)
                 if (exoPlayer?.isPlaying == true) {
-                    savePlaybackPositionInternal()
+                    savePlaybackPositionInternal(syncChannels = false)
                 }
             }
         }
@@ -484,7 +557,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         cancelSeekHide()
         cancelPauseDimTimer()
         stopProgressTracking()
-        savePlaybackPositionInternal()
+        savePlaybackPositionInternal(syncChannels = false)
         exoPlayer?.pause()
         super.onPause()
     }
@@ -493,7 +566,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         cancelSeekHide()
         cancelPauseDimTimer()
         stopProgressTracking()
-        savePlaybackPositionInternal()
+        savePlaybackPositionInternal(syncChannels = true)
         exoPlayer?.pause()
         super.onStop()
     }
@@ -502,7 +575,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         cancelSeekHide()
         cancelPauseDimTimer()
         stopProgressTracking()
-        savePlaybackPositionInternal(isBlocking = true)
+        savePlaybackPositionInternal(isBlocking = true, syncChannels = false)
         releaseAudioEffects()
         // Отвязываем SurfaceView от ExoPlayer ДО вызова stop/release и super.onDestroy,
         // чтобы нативный дисплейный слой корректно освободил буферы и не вызвал дедлок ядра VPU ТВ
@@ -514,19 +587,33 @@ class InternalPlayerActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun savePlaybackPositionInternal(isInitial: Boolean = false, isBlocking: Boolean = false) {
+    private fun savePlaybackPositionInternal(
+        isInitial: Boolean = false,
+        isBlocking: Boolean = false,
+        syncChannels: Boolean = false
+    ) {
         val player = exoPlayer
         if (isTrailer || tmdbId == 0L) return
+        // Если поток упал до начала воспроизведения, не затираем сохранённый прогресс в БД
+        if (playbackFailed && !hasReachedReady) return
 
-        val position = if (isInitial) startPositionMs else (player?.currentPosition ?: startPositionMs)
+        val rawPosition = if (isInitial) startPositionMs else (player?.currentPosition ?: startPositionMs)
         val duration = player?.duration ?: 0L
-        val validPos = if (position > 0) position else 0L
-        val validDur = if (duration > 0) duration else 0L
+        var validPos = if (rawPosition > 0) rawPosition else 0L
+        var validDur = if (duration > 0) duration else 0L
 
         val now = System.currentTimeMillis()
         val action: suspend () -> Unit = {
             try {
                 if (mediaType == "TV" && season > 0 && episode > 0) {
+                    if (isInitial && validPos == 0L) {
+                        val existingEp = RuVkTubeApp.instance.database.episodeProgressDao()
+                            .getProgress(tmdbId, season, episode)
+                        if (existingEp != null && existingEp.positionMs > 0L) {
+                            validPos = existingEp.positionMs
+                            if (validDur == 0L) validDur = existingEp.durationMs
+                        }
+                    }
                     RuVkTubeApp.instance.database.episodeProgressDao().saveProgress(
                         EpisodeProgressEntity(
                             tmdbId = tmdbId,
@@ -538,6 +625,16 @@ class InternalPlayerActivity : AppCompatActivity() {
                             updatedAt = now
                         )
                     )
+                }
+
+                if (isInitial && validPos == 0L) {
+                    val existingHist = RuVkTubeApp.instance.database.historyDao().getByTmdbId(tmdbId)
+                    if (existingHist != null && existingHist.positionMs > 0L &&
+                        (mediaType != "TV" || (existingHist.season == season && existingHist.episode == episode))
+                    ) {
+                        validPos = existingHist.positionMs
+                        if (validDur == 0L) validDur = existingHist.durationMs
+                    }
                 }
 
                 RuVkTubeApp.instance.database.historyDao().insertOrUpdate(
@@ -561,7 +658,9 @@ class InternalPlayerActivity : AppCompatActivity() {
                 )
                 // Храним только последние 30 записей истории
                 RuVkTubeApp.instance.database.historyDao().trimToLast30()
-                com.ruvk.tube.channels.TvChannelsManager.syncHistoryChannel(applicationContext)
+                if (syncChannels) {
+                    com.ruvk.tube.channels.TvChannelsManager.syncHistoryChannel(applicationContext)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("InternalPlayer", "Failed to save playback position", e)
             }
@@ -595,6 +694,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_QUALITY = "extra_quality"
         const val EXTRA_START_POSITION_MS = "extra_start_pos"
         const val EXTRA_IS_TRAILER = "extra_is_trailer"
+        const val EXTRA_IS_SAVED_STREAM = "extra_is_saved_stream"
         const val EXTRA_POSTER_URL = "extra_poster_url"
         const val EXTRA_BACKDROP_URL = "extra_backdrop_url"
         const val EXTRA_MOVIE_TITLE = "extra_movie_title"
@@ -605,5 +705,8 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_SEASON = "extra_season"
         const val EXTRA_EPISODE = "extra_episode"
         const val EXTRA_COUNTRY = "extra_country"
+
+        const val EXTRA_RESULT_ACTION = "extra_result_action"
+        const val ACTION_REFRESH_STREAM = "action_refresh_stream"
     }
 }

@@ -1,6 +1,6 @@
 {
-  "versionCode": 32,
-  "versionName": "1.2.11",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.11/RuVK-Hub-1.2.11.apk",
-  "changelog": "Оптимизация интерфейса плеера: время показа сокращено до 2 секунд, мгновенное скрытие оверлея по окончании перемотки."
+  "versionCode": 33,
+  "versionName": "1.2.12",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.12/RuVK-Hub-1.2.12.apk",
+  "changelog": "Ускорен поиск источников, исправлено возобновление устаревших ссылок, дозагрузка описаний из ТВ-поиска и стабильность синхронизации каналов."
 }

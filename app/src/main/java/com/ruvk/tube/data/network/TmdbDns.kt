@@ -8,16 +8,29 @@ import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.UnknownHostException
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Резолвер DNS для TMDB.
- * 1. Пробует системный DNS с приоритетом IPv4 над IPv6 (в эмуляторах/ТВ IPv6 часто не имеет внешнего маршрута).
- * 2. В случае ошибки/блокировки опрашивает Quad9 (9.9.9.9:53) по открытому UDP.
- * 3. Резервный Anycast IP-фолбэк для CDN CloudFront / BunnyCDN при отказе локального DNS-шлюза.
+ * 1. Использует кэш в памяти (TTL 5 мин для DNS, 1 мин для Anycast-фолбэка).
+ * 2. Пробует системный DNS с приоритетом IPv4 над IPv6 (в эмуляторах/ТВ IPv6 часто не имеет внешнего маршрута).
+ * 3. В случае ошибки/блокировки опрашивает Quad9 (9.9.9.9:53) по открытому UDP.
+ * 4. Резервный Anycast IP-фолбэк для CDN CloudFront / BunnyCDN при отказе локального DNS-шлюза.
  */
 class TmdbDns : Dns {
 
+    private data class CachedEntry(
+        val addresses: List<InetAddress>,
+        val expiresAtMs: Long
+    )
+
     companion object {
+        private const val UDP_TIMEOUT_MS = 1200
+        private const val DNS_CACHE_TTL_MS = 5 * 60 * 1000L
+        private const val FALLBACK_CACHE_TTL_MS = 60 * 1000L
+
+        private val dnsCache = ConcurrentHashMap<String, CachedEntry>()
+
         private val FALLBACK_TMDB_API_IPS = listOf(
             "143.204.238.8",
             "143.204.238.50",
@@ -32,14 +45,23 @@ class TmdbDns : Dns {
     }
 
     override fun lookup(hostname: String): List<InetAddress> {
+        val now = System.currentTimeMillis()
+        dnsCache[hostname]?.let { cached ->
+            if (now < cached.expiresAtMs && cached.addresses.isNotEmpty()) {
+                return cached.addresses
+            }
+        }
+
         // 1. Пробуем системный DNS
         try {
             val addresses = Dns.SYSTEM.lookup(hostname)
             if (addresses.isNotEmpty()) {
                 // Приоритет IPv4 над IPv6, чтобы не ловить таймауты в эмуляторах без IPv6 маршрутизации
-                return addresses.sortedBy { it !is Inet4Address }
+                val sorted = addresses.sortedBy { it !is Inet4Address }
+                dnsCache[hostname] = CachedEntry(sorted, now + DNS_CACHE_TTL_MS)
+                return sorted
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Системный DNS не ответил или заблокирован провайдером
         }
 
@@ -48,7 +70,9 @@ class TmdbDns : Dns {
         if (isTmdb) {
             val quad9Result = resolveViaUdp(hostname, "9.9.9.9")
             if (quad9Result.isNotEmpty()) {
-                return quad9Result.sortedBy { it !is Inet4Address }
+                val sorted = quad9Result.sortedBy { it !is Inet4Address }
+                dnsCache[hostname] = CachedEntry(sorted, now + DNS_CACHE_TTL_MS)
+                return sorted
             }
 
             // 3. Аварийный Anycast IP-фолбэк для TMDB
@@ -61,6 +85,7 @@ class TmdbDns : Dns {
                 runCatching { InetAddress.getByName(ip) }.getOrNull()
             }
             if (resolvedFallback.isNotEmpty()) {
+                dnsCache[hostname] = CachedEntry(resolvedFallback, now + FALLBACK_CACHE_TTL_MS)
                 return resolvedFallback
             }
         }
@@ -69,8 +94,9 @@ class TmdbDns : Dns {
     }
 
     private fun resolveViaUdp(hostname: String, dnsServerIp: String): List<InetAddress> {
+        var socket: DatagramSocket? = null
         return try {
-            val socket = DatagramSocket().apply { soTimeout = 3000 }
+            socket = DatagramSocket().apply { soTimeout = UDP_TIMEOUT_MS }
             val dnsServer = InetAddress.getByName(dnsServerIp)
 
             val queryBytes = buildDnsQuery(hostname)
@@ -80,15 +106,19 @@ class TmdbDns : Dns {
             val receiveBuffer = ByteArray(512)
             val receivePacket = DatagramPacket(receiveBuffer, receiveBuffer.size)
             socket.receive(receivePacket)
-            socket.close()
 
             parseDnsResponse(receiveBuffer, receivePacket.length)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
+        } finally {
+            try {
+                socket?.close()
+            } catch (_: Exception) {
+            }
         }
     }
 
-    private fun buildDnsQuery(hostname: String): ByteArray {
+    internal fun buildDnsQuery(hostname: String): ByteArray {
         val baos = ByteArrayOutputStream()
         val dos = DataOutputStream(baos)
 
@@ -114,7 +144,7 @@ class TmdbDns : Dns {
         return baos.toByteArray()
     }
 
-    private fun parseDnsResponse(buffer: ByteArray, length: Int): List<InetAddress> {
+    internal fun parseDnsResponse(buffer: ByteArray, length: Int): List<InetAddress> {
         val results = mutableListOf<InetAddress>()
         if (length < 12) return results
 

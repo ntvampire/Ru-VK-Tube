@@ -2,11 +2,14 @@ package com.ruvk.tube.domain.search
 
 import android.util.Log
 import com.ruvk.tube.data.api.rutube.RutubeClient
+import com.ruvk.tube.data.api.rutube.RutubeVideoItem
 import com.ruvk.tube.data.api.vk.VkClient
+import com.ruvk.tube.data.api.vk.VkVideoItem
 import com.ruvk.tube.domain.models.VideoPlatform
 import com.ruvk.tube.domain.models.VideoSource
 import com.ruvk.tube.player.DeviceCapabilityHelper
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.util.Locale
 
@@ -72,35 +75,36 @@ class SearchCoordinator(
         }
 
         for (q in queries) {
-            val rutubeDeferred = if (rutubeResults.size < 10) async { rutubeClient.searchVideos(q) } else null
-            val vkDeferred = if (vkResults.size < 10) async { vkClient.searchVideos(q) } else null
+            val rutubeDeferred = if (rutubeResults.size < MAX_SOURCES_PER_PLATFORM) async { rutubeClient.searchVideos(q) } else null
+            val vkDeferred = if (vkResults.size < MAX_SOURCES_PER_PLATFORM) async { vkClient.searchVideos(q) } else null
 
             val rutubeRaw = rutubeDeferred?.await() ?: emptyList()
             val vkRaw = vkDeferred?.await() ?: emptyList()
 
-            // 1. Фильтрация и извлечение потоков Rutube (до 10 видео)
-            for (item in rutubeRaw) {
-                if (rutubeResults.size >= 10) break
+            val rutubeCandidates = rutubeRaw.filter { item ->
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
-                if (movieStopWords.any { lowerTitle.contains(it) }) continue
-                if (camRegex.containsMatchIn(lowerTitle)) continue
-                if (!isTitleRelevant(item.title, title, originalTitle)) continue
+                !movieStopWords.any { lowerTitle.contains(it) } &&
+                    !camRegex.containsMatchIn(lowerTitle) &&
+                    isTitleRelevant(item.title, title, originalTitle) &&
+                    isValidDuration(item.duration, targetSeconds, isEpisode = false, allowZeroDuration = false)
+            }.take((MAX_SOURCES_PER_PLATFORM - rutubeResults.size) + 4)
 
-                if (targetSeconds > 0) {
-                    val minSec = (targetSeconds * 0.50).toInt()
-                    val maxSec = (targetSeconds * 1.50).toInt()
-                    if (item.duration !in minSec..maxSec) continue
-                } else if (item.duration < 35 * 60) {
-                    continue
-                }
+            val vkCandidates = vkRaw.filter { item ->
+                val lowerTitle = item.title.lowercase(Locale.ROOT)
+                !movieStopWords.any { lowerTitle.contains(it) } &&
+                    !camRegex.containsMatchIn(lowerTitle) &&
+                    isTitleRelevant(item.title, title, originalTitle) &&
+                    isValidDuration(item.durationSeconds, targetSeconds, isEpisode = false, allowZeroDuration = true)
+            }.take((MAX_SOURCES_PER_PLATFORM - vkResults.size) + 4)
 
-                val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
-                val quality = detectRutubeQuality(streamUrl, lowerTitle)
-                val voiceover = detectVoiceover(lowerTitle)
-                val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight, VideoPlatform.RUTUBE)
-
-                if (rutubeResults.none { it.streamUrl == streamUrl }) {
-                    rutubeResults.add(
+            val resolvedRutubeDeferred = async {
+                rutubeCandidates.map { item ->
+                    async {
+                        val streamUrl = rutubeClient.getStreamUrl(item.id) ?: return@async null
+                        val lowerTitle = item.title.lowercase(Locale.ROOT)
+                        val quality = detectRutubeQuality(streamUrl, lowerTitle)
+                        val voiceover = detectVoiceover(lowerTitle)
+                        val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight, VideoPlatform.RUTUBE)
                         VideoSource(
                             platform = VideoPlatform.RUTUBE,
                             title = item.title,
@@ -111,40 +115,23 @@ class SearchCoordinator(
                             isTrailer = false,
                             score = score
                         )
-                    )
-                }
+                    }
+                }.awaitAll().filterNotNull()
             }
 
-            // 2. Фильтрация и извлечение потоков VK (до 10 видео)
-            for (item in vkRaw) {
-                if (vkResults.size >= 10) break
-                val lowerTitle = item.title.lowercase(Locale.ROOT)
-                if (movieStopWords.any { lowerTitle.contains(it) }) continue
-                if (camRegex.containsMatchIn(lowerTitle)) continue
-                if (!isTitleRelevant(item.title, title, originalTitle)) continue
-
-                // Проверка хронометража: отсекаем ролики, не подходящие под фильм
-                if (targetSeconds > 0) {
-                    val minSec = (targetSeconds * 0.50).toInt()
-                    val maxSec = (targetSeconds * 1.50).toInt()
-                    if (item.durationSeconds > 0 && item.durationSeconds !in minSec..maxSec) continue
-                } else if (item.durationSeconds in 1..(35 * 60)) {
-                    continue
-                }
-
-                val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
-                val streamUrl = streamInfo.hlsUrl
-                    ?: streamInfo.directUrls["1080"]
-                    ?: streamInfo.directUrls["720"]
-                    ?: streamInfo.directUrls["480"]
-                    ?: continue
-
-                val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
-                val voiceover = detectVoiceover(lowerTitle)
-                val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight, VideoPlatform.VK)
-
-                if (vkResults.none { it.streamUrl == streamUrl }) {
-                    vkResults.add(
+            val resolvedVkDeferred = async {
+                vkCandidates.map { item ->
+                    async {
+                        val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: return@async null
+                        val streamUrl = streamInfo.hlsUrl
+                            ?: streamInfo.directUrls["1080"]
+                            ?: streamInfo.directUrls["720"]
+                            ?: streamInfo.directUrls["480"]
+                            ?: return@async null
+                        val lowerTitle = item.title.lowercase(Locale.ROOT)
+                        val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
+                        val voiceover = detectVoiceover(lowerTitle)
+                        val score = calculateScore(lowerTitle, year, quality, voiceover, maxSupportedHeight, VideoPlatform.VK)
                         VideoSource(
                             platform = VideoPlatform.VK,
                             title = item.title,
@@ -155,12 +142,15 @@ class SearchCoordinator(
                             isTrailer = false,
                             score = score
                         )
-                    )
-                }
+                    }
+                }.awaitAll().filterNotNull()
             }
 
-            // Если оба сервиса нашли источники, можно завершить цикл запросов досрочно
-            if (rutubeResults.isNotEmpty() && vkResults.isNotEmpty()) break
+            appendUniqueSources(rutubeResults, resolvedRutubeDeferred.await())
+            appendUniqueSources(vkResults, resolvedVkDeferred.await())
+
+            // Завершаем досрочно только при наличии достаточного выбора с обеих платформ
+            if (shouldStopEarly(rutubeResults, vkResults)) break
         }
 
         val allResults = (rutubeResults + vkResults).sortedByDescending { it.score }
@@ -195,36 +185,38 @@ class SearchCoordinator(
         }
 
         for (q in queries) {
-            val rutubeDeferred = if (rutubeResults.size < 10) async { rutubeClient.searchVideos(q) } else null
-            val vkDeferred = if (vkResults.size < 10) async { vkClient.searchVideos(q) } else null
+            val rutubeDeferred = if (rutubeResults.size < MAX_SOURCES_PER_PLATFORM) async { rutubeClient.searchVideos(q) } else null
+            val vkDeferred = if (vkResults.size < MAX_SOURCES_PER_PLATFORM) async { vkClient.searchVideos(q) } else null
 
             val rutubeRaw = rutubeDeferred?.await() ?: emptyList()
             val vkRaw = vkDeferred?.await() ?: emptyList()
 
-            // 1. Фильтрация и извлечение потоков Rutube
-            for (item in rutubeRaw) {
-                if (rutubeResults.size >= 10) break
+            val rutubeCandidates = rutubeRaw.filter { item ->
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
-                if (movieStopWords.any { lowerTitle.contains(it) }) continue
-                if (camRegex.containsMatchIn(lowerTitle)) continue
-                if (!isTitleRelevant(item.title, title, originalTitle)) continue
-                if (!isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber)) continue
+                !movieStopWords.any { lowerTitle.contains(it) } &&
+                    !camRegex.containsMatchIn(lowerTitle) &&
+                    isTitleRelevant(item.title, title, originalTitle) &&
+                    isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber) &&
+                    isValidDuration(item.duration, targetSeconds, isEpisode = true, allowZeroDuration = false)
+            }.take((MAX_SOURCES_PER_PLATFORM - rutubeResults.size) + 4)
 
-                if (targetSeconds > 0) {
-                    val minSec = (targetSeconds * 0.40).toInt()
-                    val maxSec = (targetSeconds * 1.60).toInt()
-                    if (item.duration !in minSec..maxSec) continue
-                } else if (item.duration < 10 * 60 || item.duration > 110 * 60) {
-                    continue
-                }
+            val vkCandidates = vkRaw.filter { item ->
+                val lowerTitle = item.title.lowercase(Locale.ROOT)
+                !movieStopWords.any { lowerTitle.contains(it) } &&
+                    !camRegex.containsMatchIn(lowerTitle) &&
+                    isTitleRelevant(item.title, title, originalTitle) &&
+                    isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber) &&
+                    isValidDuration(item.durationSeconds, targetSeconds, isEpisode = true, allowZeroDuration = true)
+            }.take((MAX_SOURCES_PER_PLATFORM - vkResults.size) + 4)
 
-                val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
-                val quality = detectRutubeQuality(streamUrl, lowerTitle)
-                val voiceover = detectVoiceover(lowerTitle)
-                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.RUTUBE)
-
-                if (rutubeResults.none { it.streamUrl == streamUrl }) {
-                    rutubeResults.add(
+            val resolvedRutubeDeferred = async {
+                rutubeCandidates.map { item ->
+                    async {
+                        val streamUrl = rutubeClient.getStreamUrl(item.id) ?: return@async null
+                        val lowerTitle = item.title.lowercase(Locale.ROOT)
+                        val quality = detectRutubeQuality(streamUrl, lowerTitle)
+                        val voiceover = detectVoiceover(lowerTitle)
+                        val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.RUTUBE)
                         VideoSource(
                             platform = VideoPlatform.RUTUBE,
                             title = item.title,
@@ -235,40 +227,23 @@ class SearchCoordinator(
                             isTrailer = false,
                             score = score
                         )
-                    )
-                }
+                    }
+                }.awaitAll().filterNotNull()
             }
 
-            // 2. Фильтрация и извлечение потоков VK
-            for (item in vkRaw) {
-                if (vkResults.size >= 10) break
-                val lowerTitle = item.title.lowercase(Locale.ROOT)
-                if (movieStopWords.any { lowerTitle.contains(it) }) continue
-                if (camRegex.containsMatchIn(lowerTitle)) continue
-                if (!isTitleRelevant(item.title, title, originalTitle)) continue
-                if (!isEpisodeMatch(lowerTitle, seasonNumber, episodeNumber)) continue
-
-                if (targetSeconds > 0) {
-                    val minSec = (targetSeconds * 0.40).toInt()
-                    val maxSec = (targetSeconds * 1.60).toInt()
-                    if (item.durationSeconds > 0 && item.durationSeconds !in minSec..maxSec) continue
-                } else if (item.durationSeconds in 1..(10 * 60) || item.durationSeconds > 110 * 60) {
-                    continue
-                }
-
-                val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
-                val streamUrl = streamInfo.hlsUrl
-                    ?: streamInfo.directUrls["1080"]
-                    ?: streamInfo.directUrls["720"]
-                    ?: streamInfo.directUrls["480"]
-                    ?: continue
-
-                val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
-                val voiceover = detectVoiceover(lowerTitle)
-                val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.VK)
-
-                if (vkResults.none { it.streamUrl == streamUrl }) {
-                    vkResults.add(
+            val resolvedVkDeferred = async {
+                vkCandidates.map { item ->
+                    async {
+                        val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: return@async null
+                        val streamUrl = streamInfo.hlsUrl
+                            ?: streamInfo.directUrls["1080"]
+                            ?: streamInfo.directUrls["720"]
+                            ?: streamInfo.directUrls["480"]
+                            ?: return@async null
+                        val lowerTitle = item.title.lowercase(Locale.ROOT)
+                        val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
+                        val voiceover = detectVoiceover(lowerTitle)
+                        val score = calculateEpisodeScore(lowerTitle, seasonNumber, episodeNumber, quality, voiceover, maxSupportedHeight, VideoPlatform.VK)
                         VideoSource(
                             platform = VideoPlatform.VK,
                             title = item.title,
@@ -279,11 +254,14 @@ class SearchCoordinator(
                             isTrailer = false,
                             score = score
                         )
-                    )
-                }
+                    }
+                }.awaitAll().filterNotNull()
             }
 
-            if (rutubeResults.isNotEmpty() && vkResults.isNotEmpty()) break
+            appendUniqueSources(rutubeResults, resolvedRutubeDeferred.await())
+            appendUniqueSources(vkResults, resolvedVkDeferred.await())
+
+            if (shouldStopEarly(rutubeResults, vkResults)) break
         }
 
         val allResults = (rutubeResults + vkResults).sortedByDescending { it.score }
@@ -380,68 +358,74 @@ class SearchCoordinator(
         )
 
         for (q in queries) {
-            val rutubeDeferred = if (rutubeTrailers.size < 10) async { rutubeClient.searchVideos(q) } else null
-            val vkDeferred = if (vkTrailers.size < 10) async { vkClient.searchVideos(q) } else null
+            val rutubeDeferred = if (rutubeTrailers.size < MAX_SOURCES_PER_PLATFORM) async { rutubeClient.searchVideos(q) } else null
+            val vkDeferred = if (vkTrailers.size < MAX_SOURCES_PER_PLATFORM) async { vkClient.searchVideos(q) } else null
 
             val rutubeRaw = rutubeDeferred?.await() ?: emptyList()
             val vkRaw = vkDeferred?.await() ?: emptyList()
 
-            // Rutube Trailers (до 10 штук)
-            for (item in rutubeRaw) {
-                if (rutubeTrailers.size >= 10) break
+            val rutubeCandidates = rutubeRaw.filter { item ->
                 val lowerTitle = item.title.lowercase(Locale.ROOT)
-                if (trailerStopWords.any { lowerTitle.contains(it) }) continue
-                if (!trailerRequiredWords.any { lowerTitle.contains(it) }) continue
-                if (!isTitleRelevant(item.title, title, originalTitle)) continue
-                if (item.duration !in 20..360) continue
+                !trailerStopWords.any { lowerTitle.contains(it) } &&
+                    trailerRequiredWords.any { lowerTitle.contains(it) } &&
+                    isTitleRelevant(item.title, title, originalTitle) &&
+                    item.duration in 20..360
+            }.take((MAX_SOURCES_PER_PLATFORM - rutubeTrailers.size) + 4)
 
-                val streamUrl = rutubeClient.getStreamUrl(item.id) ?: continue
-                val quality = detectRutubeQuality(streamUrl, lowerTitle)
-                val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight, VideoPlatform.RUTUBE)
+            val vkCandidates = vkRaw.filter { item ->
+                val lowerTitle = item.title.lowercase(Locale.ROOT)
+                !trailerStopWords.any { lowerTitle.contains(it) } &&
+                    trailerRequiredWords.any { lowerTitle.contains(it) } &&
+                    isTitleRelevant(item.title, title, originalTitle) &&
+                    !(item.durationSeconds in 1..19 || item.durationSeconds > 400)
+            }.take((MAX_SOURCES_PER_PLATFORM - vkTrailers.size) + 4)
 
-                rutubeTrailers.add(
-                    VideoSource(
-                        platform = VideoPlatform.RUTUBE,
-                        title = item.title,
-                        streamUrl = streamUrl,
-                        quality = quality,
-                        durationSeconds = item.duration,
-                        isTrailer = true,
-                        score = score
-                    )
-                )
+            val resolvedRutubeDeferred = async {
+                rutubeCandidates.map { item ->
+                    async {
+                        val streamUrl = rutubeClient.getStreamUrl(item.id) ?: return@async null
+                        val lowerTitle = item.title.lowercase(Locale.ROOT)
+                        val quality = detectRutubeQuality(streamUrl, lowerTitle)
+                        val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight, VideoPlatform.RUTUBE)
+                        VideoSource(
+                            platform = VideoPlatform.RUTUBE,
+                            title = item.title,
+                            streamUrl = streamUrl,
+                            quality = quality,
+                            durationSeconds = item.duration,
+                            isTrailer = true,
+                            score = score
+                        )
+                    }
+                }.awaitAll().filterNotNull()
             }
 
-            // VK Trailers (до 10 штук)
-            for (item in vkRaw) {
-                if (vkTrailers.size >= 10) break
-                val lowerTitle = item.title.lowercase(Locale.ROOT)
-                if (trailerStopWords.any { lowerTitle.contains(it) }) continue
-                if (!trailerRequiredWords.any { lowerTitle.contains(it) }) continue
-                if (!isTitleRelevant(item.title, title, originalTitle)) continue
-                if (item.durationSeconds in 1..19 || item.durationSeconds > 400) continue
-
-                val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: continue
-                val streamUrl = streamInfo.hlsUrl
-                    ?: streamInfo.directUrls["1080"]
-                    ?: streamInfo.directUrls["720"]
-                    ?: continue
-
-                val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
-                val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight, VideoPlatform.VK)
-
-                vkTrailers.add(
-                    VideoSource(
-                        platform = VideoPlatform.VK,
-                        title = item.title,
-                        streamUrl = streamUrl,
-                        quality = quality,
-                        durationSeconds = item.durationSeconds,
-                        isTrailer = true,
-                        score = score
-                    )
-                )
+            val resolvedVkDeferred = async {
+                vkCandidates.map { item ->
+                    async {
+                        val streamInfo = vkClient.resolveStream(item.oid, item.id) ?: return@async null
+                        val streamUrl = streamInfo.hlsUrl
+                            ?: streamInfo.directUrls["1080"]
+                            ?: streamInfo.directUrls["720"]
+                            ?: return@async null
+                        val lowerTitle = item.title.lowercase(Locale.ROOT)
+                        val quality = detectVkQuality(streamInfo.bestQuality, lowerTitle)
+                        val score = calculateScore(lowerTitle, year, quality, null, maxSupportedHeight, VideoPlatform.VK)
+                        VideoSource(
+                            platform = VideoPlatform.VK,
+                            title = item.title,
+                            streamUrl = streamUrl,
+                            quality = quality,
+                            durationSeconds = item.durationSeconds,
+                            isTrailer = true,
+                            score = score
+                        )
+                    }
+                }.awaitAll().filterNotNull()
             }
+
+            appendUniqueSources(rutubeTrailers, resolvedRutubeDeferred.await())
+            appendUniqueSources(vkTrailers, resolvedVkDeferred.await())
 
             if (rutubeTrailers.isNotEmpty() && vkTrailers.isNotEmpty()) break
         }
@@ -572,5 +556,46 @@ class SearchCoordinator(
         }
 
         return score
+    }
+
+    private fun isValidDuration(
+        durationSeconds: Int,
+        targetSeconds: Int,
+        isEpisode: Boolean,
+        allowZeroDuration: Boolean
+    ): Boolean {
+        if (allowZeroDuration && durationSeconds == 0) return true
+        if (targetSeconds > 0) {
+            val factorMin = if (isEpisode) 0.40 else 0.50
+            val factorMax = if (isEpisode) 1.60 else 1.50
+            val minSec = (targetSeconds * factorMin).toInt()
+            val maxSec = (targetSeconds * factorMax).toInt()
+            return durationSeconds in minSec..maxSec
+        }
+        return if (isEpisode) {
+            durationSeconds in (10 * 60 + 1)..(110 * 60)
+        } else {
+            durationSeconds > 35 * 60
+        }
+    }
+
+    private fun appendUniqueSources(target: MutableList<VideoSource>, resolved: List<VideoSource>) {
+        for (source in resolved) {
+            if (target.size >= MAX_SOURCES_PER_PLATFORM) break
+            if (target.none { it.streamUrl == source.streamUrl }) {
+                target.add(source)
+            }
+        }
+    }
+
+    private fun shouldStopEarly(rutube: List<VideoSource>, vk: List<VideoSource>): Boolean {
+        if (rutube.isEmpty() || vk.isEmpty()) return false
+        val total = rutube.size + vk.size
+        val hasHd = (rutube + vk).any { DeviceCapabilityHelper.qualityToHeight(it.quality) >= 720 }
+        return total >= 3 && hasHd
+    }
+
+    companion object {
+        private const val MAX_SOURCES_PER_PLATFORM = 10
     }
 }

@@ -14,6 +14,7 @@ import com.ruvk.tube.data.network.NetworkClient
 import com.ruvk.tube.domain.search.SearchCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class RuVkTubeApp : Application(), ImageLoaderFactory {
@@ -55,6 +56,8 @@ class RuVkTubeApp : Application(), ImageLoaderFactory {
         TvChannelsManager.schedulePeriodicSync(this)
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Не конкурируем с первоначальной загрузкой ленты и постеров в MainActivity
+                delay(2500L)
                 TvChannelsManager.syncAllChannels(this@RuVkTubeApp)
             } catch (e: Exception) {
                 android.util.Log.e("RuVkTubeApp", "Error during initial TV channels sync", e)

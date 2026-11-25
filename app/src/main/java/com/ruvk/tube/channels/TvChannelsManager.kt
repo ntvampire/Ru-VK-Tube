@@ -35,8 +35,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 object TvChannelsManager {
@@ -53,6 +58,54 @@ object TvChannelsManager {
         CHANNEL_KEY_HISTORY
     )
 
+    private val trendingMutex = Mutex()
+    private val favoritesMutex = Mutex()
+    private val historyMutex = Mutex()
+    private val watchNextMutex = Mutex()
+    private val tmdbSemaphore = Semaphore(3)
+
+    private data class CachedDetails(
+        val ageRating: String?,
+        val runtimeMinutes: Int,
+        val overview: String,
+        val country: String?,
+        val expiresAtMs: Long
+    )
+
+    private val detailsCache = ConcurrentHashMap<String, CachedDetails>()
+    private const val DETAILS_CACHE_TTL_MS = 15 * 60 * 1000L
+
+    private suspend fun fetchCachedDetails(tmdbId: Long, isTv: Boolean): CachedDetails? {
+        val cacheKey = "${if (isTv) "TV" else "MOVIE"}:$tmdbId"
+        val now = System.currentTimeMillis()
+        detailsCache[cacheKey]?.let { cached ->
+            if (now < cached.expiresAtMs) return cached
+        }
+        return tmdbSemaphore.withPermit {
+            detailsCache[cacheKey]?.let { cached ->
+                if (System.currentTimeMillis() < cached.expiresAtMs) return@withPermit cached
+            }
+            try {
+                val item = if (isTv) {
+                    RuVkTubeApp.instance.tmdbRepository.getTvDetails(tmdbId)
+                } else {
+                    RuVkTubeApp.instance.tmdbRepository.getMovieDetails(tmdbId)
+                }
+                val entry = CachedDetails(
+                    ageRating = item.ageRating,
+                    runtimeMinutes = item.runtimeMinutes,
+                    overview = item.overview,
+                    country = item.country,
+                    expiresAtMs = System.currentTimeMillis() + DETAILS_CACHE_TTL_MS
+                )
+                detailsCache[cacheKey] = entry
+                entry
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     private fun isTvChannelsSupported(): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
     }
@@ -62,7 +115,7 @@ object TvChannelsManager {
         try {
             syncTrendingChannel(context)
             syncFavoritesChannel(context)
-            syncHistoryChannel(context)
+            syncHistoryChannel(context, alsoSyncWatchNext = false)
             syncWatchNext(context)
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing all TV channels", e)
@@ -71,32 +124,32 @@ object TvChannelsManager {
 
     suspend fun syncTrendingChannel(context: Context) = withContext(Dispatchers.IO) {
         if (!isTvChannelsSupported()) return@withContext
-        try {
-            val helper = PreviewChannelHelper(context)
-            val channelId = getOrCreateChannel(
-                context = context,
-                helper = helper,
-                internalId = CHANNEL_KEY_TRENDING,
-                displayName = "В тренде",
-                description = "Популярные фильмы и сериалы",
-                category = NumCategory.TRENDING,
-                isDefault = true
-            ) ?: return@withContext
+        trendingMutex.withLock {
+            try {
+                val helper = PreviewChannelHelper(context)
+                val channelId = getOrCreateChannel(
+                    context = context,
+                    helper = helper,
+                    internalId = CHANNEL_KEY_TRENDING,
+                    displayName = "В тренде",
+                    description = "Популярные фильмы и сериалы",
+                    category = NumCategory.TRENDING,
+                    isDefault = true
+                ) ?: return@withLock
 
-            val rawTrending = try {
-                RuVkTubeApp.instance.tmdbRepository.getTrending(page = 1).take(20)
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not fetch trending from TMDB", e)
-                emptyList()
-            }
+                val rawTrending = try {
+                    RuVkTubeApp.instance.tmdbRepository.getTrending(page = 1).take(20)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not fetch trending from TMDB", e)
+                    emptyList()
+                }
 
-            val trendingItems = if (rawTrending.isNotEmpty()) {
-                coroutineScope {
-                    rawTrending.map { item ->
-                        async {
-                            try {
-                                if (item.mediaType == MediaType.TV) {
-                                    val details = RuVkTubeApp.instance.tmdbRepository.getTvDetails(item.id)
+                val trendingItems = if (rawTrending.isNotEmpty()) {
+                    coroutineScope {
+                        rawTrending.map { item ->
+                            async {
+                                val details = fetchCachedDetails(item.id, item.mediaType == MediaType.TV)
+                                if (details != null) {
                                     item.copy(
                                         ageRating = details.ageRating,
                                         runtimeMinutes = details.runtimeMinutes,
@@ -104,384 +157,341 @@ object TvChannelsManager {
                                         overview = details.overview.ifBlank { item.overview }
                                     )
                                 } else {
-                                    val details = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(item.id)
-                                    item.copy(
-                                        ageRating = details.ageRating,
-                                        runtimeMinutes = details.runtimeMinutes,
-                                        country = details.country,
-                                        overview = details.overview.ifBlank { item.overview }
-                                    )
+                                    item
                                 }
-                            } catch (_: Exception) {
-                                item
                             }
-                        }
-                    }.awaitAll()
+                        }.awaitAll()
+                    }
+                } else {
+                    emptyList()
                 }
-            } else {
-                emptyList()
-            }
 
-            if (trendingItems.isNotEmpty()) {
-                syncPrograms(context, helper, channelId, trendingItems)
+                if (trendingItems.isNotEmpty()) {
+                    syncPrograms(context, helper, channelId, trendingItems)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error syncing Trending channel", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error syncing Trending channel", e)
         }
     }
 
     suspend fun syncFavoritesChannel(context: Context) = withContext(Dispatchers.IO) {
         if (!isTvChannelsSupported()) return@withContext
-        try {
-            val helper = PreviewChannelHelper(context)
-            val channelId = getOrCreateChannel(
-                context = context,
-                helper = helper,
-                internalId = CHANNEL_KEY_FAVORITES,
-                displayName = "Избранное",
-                description = "Ваши избранные фильмы и сериалы",
-                category = NumCategory.FAVORITES,
-                isDefault = false
-            ) ?: return@withContext
+        favoritesMutex.withLock {
+            try {
+                val helper = PreviewChannelHelper(context)
+                val channelId = getOrCreateChannel(
+                    context = context,
+                    helper = helper,
+                    internalId = CHANNEL_KEY_FAVORITES,
+                    displayName = "Избранное",
+                    description = "Ваши избранные фильмы и сериалы",
+                    category = NumCategory.FAVORITES,
+                    isDefault = false
+                ) ?: return@withLock
 
-            val favEntities = RuVkTubeApp.instance.database.favoritesDao().getAllFavoritesList()
-            val favItems = coroutineScope {
-                favEntities.map { f ->
-                    async {
-                        val isTv = f.mediaType == MediaType.TV.name
-                        var ageRating: String? = null
-                        var runtimeMinutes = 0
-                        var overview = f.overview ?: ""
-                        var countryStr = f.country
-                        try {
-                            if (isTv) {
-                                val tvDetails = RuVkTubeApp.instance.tmdbRepository.getTvDetails(f.tmdbId)
-                                ageRating = tvDetails.ageRating
-                                runtimeMinutes = tvDetails.runtimeMinutes
-                                if (overview.isBlank()) overview = tvDetails.overview
-                                if (countryStr.isNullOrBlank()) countryStr = tvDetails.country
-                            } else {
-                                val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(f.tmdbId)
-                                ageRating = mDetails.ageRating
-                                runtimeMinutes = mDetails.runtimeMinutes
-                                if (overview.isBlank()) overview = mDetails.overview
-                                if (countryStr.isNullOrBlank()) countryStr = mDetails.country
-                            }
-                        } catch (_: Exception) {}
+                val favEntities = RuVkTubeApp.instance.database.favoritesDao().getAllFavoritesList()
+                val favItems = coroutineScope {
+                    favEntities.map { f ->
+                        async {
+                            val isTv = f.mediaType == MediaType.TV.name
+                            val details = fetchCachedDetails(f.tmdbId, isTv)
+                            val overview = (f.overview ?: "").ifBlank { details?.overview ?: "" }
+                            val countryStr = f.country?.takeIf { it.isNotBlank() } ?: details?.country
 
-                        MediaItem(
-                            id = f.tmdbId,
-                            title = f.title,
-                            originalTitle = "",
-                            overview = overview,
-                            posterUrl = f.posterUrl,
-                            backdropUrl = f.backdropUrl,
-                            releaseDate = if (f.year > 0) "${f.year}" else "",
-                            year = f.year,
-                            voteAverage = f.rating,
-                            runtimeMinutes = runtimeMinutes,
-                            ageRating = ageRating,
-                            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
-                            country = countryStr
-                        )
-                    }
-                }.awaitAll()
+                            MediaItem(
+                                id = f.tmdbId,
+                                title = f.title,
+                                originalTitle = "",
+                                overview = overview,
+                                posterUrl = f.posterUrl,
+                                backdropUrl = f.backdropUrl,
+                                releaseDate = if (f.year > 0) "${f.year}" else "",
+                                year = f.year,
+                                voteAverage = f.rating,
+                                runtimeMinutes = details?.runtimeMinutes ?: 0,
+                                ageRating = details?.ageRating,
+                                mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+                                country = countryStr
+                            )
+                        }
+                    }.awaitAll()
+                }
+                syncPrograms(context, helper, channelId, favItems)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error syncing Favorites channel", e)
             }
-            syncPrograms(context, helper, channelId, favItems)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error syncing Favorites channel", e)
         }
     }
 
-    suspend fun syncHistoryChannel(context: Context) = withContext(Dispatchers.IO) {
+    suspend fun syncHistoryChannel(context: Context, alsoSyncWatchNext: Boolean = true) = withContext(Dispatchers.IO) {
         if (!isTvChannelsSupported()) return@withContext
-        try {
-            val helper = PreviewChannelHelper(context)
-            val channelId = getOrCreateChannel(
-                context = context,
-                helper = helper,
-                internalId = CHANNEL_KEY_HISTORY,
-                displayName = "История просмотров",
-                description = "Недавно просмотренные видео",
-                category = NumCategory.HISTORY,
-                isDefault = false
-            ) ?: return@withContext
+        var syncedOk = false
+        historyMutex.withLock {
+            try {
+                val helper = PreviewChannelHelper(context)
+                val channelId = getOrCreateChannel(
+                    context = context,
+                    helper = helper,
+                    internalId = CHANNEL_KEY_HISTORY,
+                    displayName = "История просмотров",
+                    description = "Недавно просмотренные видео",
+                    category = NumCategory.HISTORY,
+                    isDefault = false
+                ) ?: return@withLock
 
-            val histEntities = RuVkTubeApp.instance.database.historyDao().getRecentHistoryList()
-            val historyItems = coroutineScope {
-                histEntities.map { h ->
-                    async {
-                        val isTv = h.mediaType == MediaType.TV.name
-                        var posMs = h.positionMs
-                        var durMs = h.durationMs
-                        var lastStream = h.lastStreamUrl
-                        var sNum = h.season
-                        var eNum = h.episode
+                val histEntities = RuVkTubeApp.instance.database.historyDao().getRecentHistoryList()
+                val historyItems = coroutineScope {
+                    histEntities.map { h ->
+                        async {
+                            val isTv = h.mediaType == MediaType.TV.name
+                            var posMs = h.positionMs
+                            var durMs = h.durationMs
+                            var lastStream = h.lastStreamUrl
+                            var sNum = h.season
+                            var eNum = h.episode
 
-                        if (isTv) {
-                            val latestEp = RuVkTubeApp.instance.database.episodeProgressDao()
-                                .getAllForShow(h.tmdbId).firstOrNull()
-                            if (latestEp != null && latestEp.positionMs > 5_000L) {
-                                posMs = latestEp.positionMs
-                                durMs = latestEp.durationMs
-                                lastStream = latestEp.lastStreamUrl
-                                sNum = latestEp.season
-                                eNum = latestEp.episode
-                            }
-                        }
-
-                        var ageRating: String? = null
-                        var runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else 0
-                        var overview = h.overview ?: ""
-                        var countryStr = h.country
-
-                        try {
                             if (isTv) {
-                                val tvDetails = RuVkTubeApp.instance.tmdbRepository.getTvDetails(h.tmdbId)
-                                ageRating = tvDetails.ageRating
-                                if (runtimeMinutes == 0) runtimeMinutes = tvDetails.runtimeMinutes
-                                if (overview.isBlank()) overview = tvDetails.overview
-                                if (countryStr.isNullOrBlank()) countryStr = tvDetails.country
-                            } else {
-                                val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(h.tmdbId)
-                                ageRating = mDetails.ageRating
-                                if (runtimeMinutes == 0) runtimeMinutes = mDetails.runtimeMinutes
-                                if (overview.isBlank()) overview = mDetails.overview
-                                if (countryStr.isNullOrBlank()) countryStr = mDetails.country
+                                val latestEp = RuVkTubeApp.instance.database.episodeProgressDao()
+                                    .getAllForShow(h.tmdbId).firstOrNull()
+                                if (latestEp != null && latestEp.positionMs > 5_000L) {
+                                    posMs = latestEp.positionMs
+                                    durMs = latestEp.durationMs
+                                    lastStream = latestEp.lastStreamUrl
+                                    sNum = latestEp.season
+                                    eNum = latestEp.episode
+                                }
                             }
-                        } catch (_: Exception) {}
 
-                        MediaItem(
-                            id = h.tmdbId,
-                            title = h.title,
-                            originalTitle = "",
-                            overview = overview,
-                            posterUrl = h.posterUrl,
-                            backdropUrl = h.backdropUrl,
-                            releaseDate = if (h.year > 0) "${h.year}" else "",
-                            year = h.year,
-                            voteAverage = h.rating,
-                            runtimeMinutes = runtimeMinutes,
-                            ageRating = ageRating,
-                            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
-                            watchPositionMs = posMs,
-                            watchDurationMs = durMs,
-                            lastStreamUrl = lastStream,
-                            lastSeason = sNum,
-                            lastEpisode = eNum,
-                            country = countryStr
-                        )
-                    }
-                }.awaitAll()
+                            val details = fetchCachedDetails(h.tmdbId, isTv)
+                            val runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else (details?.runtimeMinutes ?: 0)
+                            val overview = (h.overview ?: "").ifBlank { details?.overview ?: "" }
+                            val countryStr = h.country?.takeIf { it.isNotBlank() } ?: details?.country
+
+                            MediaItem(
+                                id = h.tmdbId,
+                                title = h.title,
+                                originalTitle = "",
+                                overview = overview,
+                                posterUrl = h.posterUrl,
+                                backdropUrl = h.backdropUrl,
+                                releaseDate = if (h.year > 0) "${h.year}" else "",
+                                year = h.year,
+                                voteAverage = h.rating,
+                                runtimeMinutes = runtimeMinutes,
+                                ageRating = details?.ageRating,
+                                mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+                                watchPositionMs = posMs,
+                                watchDurationMs = durMs,
+                                lastStreamUrl = lastStream,
+                                lastSeason = sNum,
+                                lastEpisode = eNum,
+                                country = countryStr
+                            )
+                        }
+                    }.awaitAll()
+                }
+
+                syncPrograms(context, helper, channelId, historyItems)
+                syncedOk = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Error syncing History channel", e)
             }
-
-            syncPrograms(context, helper, channelId, historyItems)
-            // При обновлении истории просмотров сразу синхронизируем системный Play Next
+        }
+        if (syncedOk && alsoSyncWatchNext) {
             syncWatchNext(context)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error syncing History channel", e)
         }
     }
 
     suspend fun syncWatchNext(context: Context) = withContext(Dispatchers.IO) {
         if (!isTvChannelsSupported()) return@withContext
-        try {
-            val helper = PreviewChannelHelper(context)
-            val histEntities = RuVkTubeApp.instance.database.historyDao().getRecentHistoryList()
-
-            // В Play Next выводим только реально начатые и недосмотренные до конца видео (> 5 сек и < 95% длительности)
-            val inProgressEntities = histEntities.filter { h ->
-                val pos = h.positionMs
-                val dur = h.durationMs
-                pos > 5_000L && (dur <= 0L || pos < (dur * 0.95).toLong())
-            }.take(10)
-
-            // Запрашиваем уже опубликованные нами программы из системного Watch Next
-            val existingPrograms = mutableListOf<WatchNextProgram>()
+        watchNextMutex.withLock {
             try {
-                context.contentResolver.query(
-                    TvContractCompat.WatchNextPrograms.CONTENT_URI,
-                    WatchNextProgram.PROJECTION,
-                    null,
-                    null,
-                    null
-                )?.use { cursor ->
-                    while (cursor.moveToNext()) {
-                        existingPrograms.add(WatchNextProgram.fromCursor(cursor))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to query WatchNext programs", e)
-            }
+                val helper = PreviewChannelHelper(context)
+                val histEntities = RuVkTubeApp.instance.database.historyDao().getRecentHistoryList()
 
-            // Сбрасываем остаточный review_rating в системной БД, чтобы лаунчер не рисовал символьные звёзды
-            try {
-                val clearRatingValues = ContentValues().apply {
-                    putNull(TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING)
-                    putNull(TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING_STYLE)
-                }
-                context.contentResolver.update(
-                    TvContractCompat.WatchNextPrograms.CONTENT_URI,
-                    clearRatingValues,
-                    "${TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING} IS NOT NULL",
-                    null
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to clear legacy review ratings for WatchNext", e)
-            }
+                // Для сериалов сначала подтягиваем актуальный эпизод из episode_progress,
+                // и только затем отбираем незавершённые (> 5 сек и < 95% длительности)
+                val resolvedEntries = histEntities.mapNotNull { h ->
+                    val isTv = h.mediaType == MediaType.TV.name
+                    var posMs = h.positionMs
+                    var durMs = h.durationMs
+                    var lastStream = h.lastStreamUrl
+                    var sNum = h.season
+                    var eNum = h.episode
 
-            val existingMap = existingPrograms.associateBy { it.internalProviderId }.toMutableMap()
-
-            for (h in inProgressEntities) {
-                val isTv = h.mediaType == MediaType.TV.name
-                var posMs = h.positionMs
-                var durMs = h.durationMs
-                var lastStream = h.lastStreamUrl
-                var sNum = h.season
-                var eNum = h.episode
-
-                if (isTv) {
-                    val latestEp = RuVkTubeApp.instance.database.episodeProgressDao()
-                        .getAllForShow(h.tmdbId).firstOrNull()
-                    if (latestEp != null && latestEp.positionMs > 5_000L) {
-                        posMs = latestEp.positionMs
-                        durMs = latestEp.durationMs
-                        lastStream = latestEp.lastStreamUrl
-                        sNum = latestEp.season
-                        eNum = latestEp.episode
-                    }
-                }
-
-                // Пропускаем, если серия/фильм завершены
-                if (durMs > 0L && posMs >= (durMs * 0.95).toLong()) {
-                    continue
-                }
-
-                val internalId = "watch_next_${if (isTv) "TV" else "MOVIE"}_${h.tmdbId}"
-                val existing = existingMap.remove(internalId)
-
-                var ageRating: String? = null
-                var runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else 0
-                var overview = h.overview ?: ""
-                var countryStr = h.country
-
-                try {
                     if (isTv) {
-                        val tvDetails = RuVkTubeApp.instance.tmdbRepository.getTvDetails(h.tmdbId)
-                        ageRating = tvDetails.ageRating
-                        if (runtimeMinutes == 0) runtimeMinutes = tvDetails.runtimeMinutes
-                        if (overview.isBlank()) overview = tvDetails.overview
-                        if (countryStr.isNullOrBlank()) countryStr = tvDetails.country
-                    } else {
-                        val mDetails = RuVkTubeApp.instance.tmdbRepository.getMovieDetails(h.tmdbId)
-                        ageRating = mDetails.ageRating
-                        if (runtimeMinutes == 0) runtimeMinutes = mDetails.runtimeMinutes
-                        if (overview.isBlank()) overview = mDetails.overview
-                        if (countryStr.isNullOrBlank()) countryStr = mDetails.country
+                        val latestEp = RuVkTubeApp.instance.database.episodeProgressDao()
+                            .getAllForShow(h.tmdbId).firstOrNull()
+                        if (latestEp != null && latestEp.positionMs > 5_000L) {
+                            posMs = latestEp.positionMs
+                            durMs = latestEp.durationMs
+                            lastStream = latestEp.lastStreamUrl
+                            sNum = latestEp.season
+                            eNum = latestEp.episode
+                        }
                     }
-                } catch (_: Exception) {}
 
-                val mediaItem = MediaItem(
-                    id = h.tmdbId,
-                    title = h.title,
-                    originalTitle = "",
-                    overview = overview,
-                    posterUrl = h.posterUrl,
-                    backdropUrl = h.backdropUrl,
-                    releaseDate = if (h.year > 0) "${h.year}" else "",
-                    year = h.year,
-                    voteAverage = h.rating,
-                    runtimeMinutes = runtimeMinutes,
-                    ageRating = ageRating,
-                    mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
-                    watchPositionMs = posMs,
-                    watchDurationMs = durMs,
-                    lastStreamUrl = lastStream,
-                    lastSeason = sNum,
-                    lastEpisode = eNum,
-                    country = countryStr
-                )
+                    val isInProgress = posMs > 5_000L && (durMs <= 0L || posMs < (durMs * 0.95).toLong())
+                    if (!isInProgress) return@mapNotNull null
 
-                val programBuilder = WatchNextProgram.Builder()
-                programBuilder.setReviewRating(null)
-                programBuilder.setReviewRatingStyle(-1)
+                    Triple(h, isTv, listOf(posMs, durMs, sNum.toLong(), eNum.toLong()) to lastStream)
+                }.take(10)
 
-                val programUri = buildProgramIntentUri(context, mediaItem)
-                val imageUri = mediaItem.posterUrl?.takeIf { it.isNotBlank() }
-                    ?: mediaItem.backdropUrl?.takeIf { it.isNotBlank() }
-                val descriptionText = buildProgramDescription(mediaItem)
-                val longDescText = buildProgramLongDescription(mediaItem)
-
-                val isEpisode = isTv && sNum > 0 && eNum > 0
-                val programType = when {
-                    isEpisode -> TvContractCompat.PreviewPrograms.TYPE_TV_EPISODE
-                    isTv -> TvContractCompat.PreviewPrograms.TYPE_TV_SERIES
-                    else -> TvContractCompat.PreviewPrograms.TYPE_MOVIE
-                }
-
-                programBuilder
-                    .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
-                    .setLastEngagementTimeUtcMillis(h.updatedAt)
-                    .setTitle(mediaItem.title)
-                    .setDescription(descriptionText)
-                    .setLongDescription(longDescText)
-                    .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
-                    .setType(programType)
-                    .setIntentUri(programUri)
-                    .setInternalProviderId(internalId)
-
-                if (isEpisode) {
-                    programBuilder.setSeasonNumber(sNum)
-                    programBuilder.setEpisodeNumber(eNum)
-                }
-
-                val duration = when {
-                    durMs > 0L -> durMs.toInt()
-                    mediaItem.runtimeMinutes > 0 -> mediaItem.runtimeMinutes * 60_000
-                    else -> 0
-                }
-                if (duration > 0) {
-                    programBuilder.setDurationMillis(duration)
-                }
-                if (posMs > 0L) {
-                    programBuilder.setLastPlaybackPositionMillis(posMs.toInt())
-                }
-
-                val releaseDateStr = when {
-                    mediaItem.year > 0 -> mediaItem.year.toString()
-                    mediaItem.releaseDate.isNotBlank() -> mediaItem.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
-                    else -> null
-                }
-                if (releaseDateStr != null) {
-                    programBuilder.setReleaseDate(releaseDateStr)
-                }
-
-                if (imageUri != null) {
-                    programBuilder.setPosterArtUri(Uri.parse(imageUri))
-                }
-
+                // Запрашиваем уже опубликованные нами программы из системного Watch Next
+                val existingPrograms = mutableListOf<WatchNextProgram>()
                 try {
-                    if (existing != null) {
-                        helper.updateWatchNextProgram(programBuilder.build(), existing.id)
-                    } else {
-                        helper.publishWatchNextProgram(programBuilder.build())
+                    context.contentResolver.query(
+                        TvContractCompat.WatchNextPrograms.CONTENT_URI,
+                        WatchNextProgram.PROJECTION,
+                        null,
+                        null,
+                        null
+                    )?.use { cursor ->
+                        while (cursor.moveToNext()) {
+                            existingPrograms.add(WatchNextProgram.fromCursor(cursor))
+                        }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to publish/update WatchNext program: ${mediaItem.title}", e)
+                    Log.w(TAG, "Failed to query WatchNext programs", e)
                 }
-            }
 
-            // Удаляем из WatchNext те программы, которые пользователь досмотрел или удалил
-            for ((_, removed) in existingMap) {
+                // Сбрасываем остаточный review_rating в системной БД, чтобы лаунчер не рисовал символьные звёзды
                 try {
-                    val uri = TvContractCompat.buildWatchNextProgramUri(removed.id)
-                    context.contentResolver.delete(uri, null, null)
+                    val clearRatingValues = ContentValues().apply {
+                        putNull(TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING)
+                        putNull(TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING_STYLE)
+                    }
+                    context.contentResolver.update(
+                        TvContractCompat.WatchNextPrograms.CONTENT_URI,
+                        clearRatingValues,
+                        "${TvContractCompat.WatchNextPrograms.COLUMN_REVIEW_RATING} IS NOT NULL",
+                        null
+                    )
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to delete completed/removed WatchNext program ${removed.id}", e)
+                    Log.w(TAG, "Failed to clear legacy review ratings for WatchNext", e)
                 }
+
+                val existingMap = existingPrograms.associateBy { it.internalProviderId }.toMutableMap()
+
+                for ((h, isTv, progressPair) in resolvedEntries) {
+                    val nums = progressPair.first
+                    val posMs = nums[0]
+                    val durMs = nums[1]
+                    val sNum = nums[2].toInt()
+                    val eNum = nums[3].toInt()
+                    val lastStream = progressPair.second
+
+                    val internalId = "watch_next_${if (isTv) "TV" else "MOVIE"}_${h.tmdbId}"
+                    val existing = existingMap.remove(internalId)
+
+                    val details = fetchCachedDetails(h.tmdbId, isTv)
+                    val runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else (details?.runtimeMinutes ?: 0)
+                    val overview = (h.overview ?: "").ifBlank { details?.overview ?: "" }
+                    val countryStr = h.country?.takeIf { it.isNotBlank() } ?: details?.country
+
+                    val mediaItem = MediaItem(
+                        id = h.tmdbId,
+                        title = h.title,
+                        originalTitle = "",
+                        overview = overview,
+                        posterUrl = h.posterUrl,
+                        backdropUrl = h.backdropUrl,
+                        releaseDate = if (h.year > 0) "${h.year}" else "",
+                        year = h.year,
+                        voteAverage = h.rating,
+                        runtimeMinutes = runtimeMinutes,
+                        ageRating = details?.ageRating,
+                        mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+                        watchPositionMs = posMs,
+                        watchDurationMs = durMs,
+                        lastStreamUrl = lastStream,
+                        lastSeason = sNum,
+                        lastEpisode = eNum,
+                        country = countryStr
+                    )
+
+                    val programBuilder = WatchNextProgram.Builder()
+                    programBuilder.setReviewRating(null)
+                    programBuilder.setReviewRatingStyle(-1)
+
+                    val programUri = buildProgramIntentUri(context, mediaItem)
+                    val imageUri = mediaItem.posterUrl?.takeIf { it.isNotBlank() }
+                        ?: mediaItem.backdropUrl?.takeIf { it.isNotBlank() }
+                    val descriptionText = buildProgramDescription(mediaItem)
+                    val longDescText = buildProgramLongDescription(mediaItem)
+
+                    val isEpisode = isTv && sNum > 0 && eNum > 0
+                    val programType = when {
+                        isEpisode -> TvContractCompat.PreviewPrograms.TYPE_TV_EPISODE
+                        isTv -> TvContractCompat.PreviewPrograms.TYPE_TV_SERIES
+                        else -> TvContractCompat.PreviewPrograms.TYPE_MOVIE
+                    }
+
+                    programBuilder
+                        .setWatchNextType(TvContractCompat.WatchNextPrograms.WATCH_NEXT_TYPE_CONTINUE)
+                        .setLastEngagementTimeUtcMillis(h.updatedAt)
+                        .setTitle(mediaItem.title)
+                        .setDescription(descriptionText)
+                        .setLongDescription(longDescText)
+                        .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_2_3)
+                        .setType(programType)
+                        .setIntentUri(programUri)
+                        .setInternalProviderId(internalId)
+
+                    if (isEpisode) {
+                        programBuilder.setSeasonNumber(sNum)
+                        programBuilder.setEpisodeNumber(eNum)
+                    }
+
+                    val duration = when {
+                        durMs > 0L -> durMs.toInt()
+                        mediaItem.runtimeMinutes > 0 -> mediaItem.runtimeMinutes * 60_000
+                        else -> 0
+                    }
+                    if (duration > 0) {
+                        programBuilder.setDurationMillis(duration)
+                    }
+                    if (posMs > 0L) {
+                        programBuilder.setLastPlaybackPositionMillis(posMs.toInt())
+                    }
+
+                    val releaseDateStr = when {
+                        mediaItem.year > 0 -> mediaItem.year.toString()
+                        mediaItem.releaseDate.isNotBlank() -> mediaItem.releaseDate.take(4).takeIf { y -> y.all { it.isDigit() } }
+                        else -> null
+                    }
+                    if (releaseDateStr != null) {
+                        programBuilder.setReleaseDate(releaseDateStr)
+                    }
+
+                    if (imageUri != null) {
+                        programBuilder.setPosterArtUri(Uri.parse(imageUri))
+                    }
+
+                    try {
+                        if (existing != null) {
+                            helper.updateWatchNextProgram(programBuilder.build(), existing.id)
+                        } else {
+                            helper.publishWatchNextProgram(programBuilder.build())
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to publish/update WatchNext program: ${mediaItem.title}", e)
+                    }
+                }
+
+                // Удаляем из WatchNext те программы, которые пользователь досмотрел или удалил
+                for ((_, removed) in existingMap) {
+                    try {
+                        val uri = TvContractCompat.buildWatchNextProgramUri(removed.id)
+                        context.contentResolver.delete(uri, null, null)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to delete completed/removed WatchNext program ${removed.id}", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error syncing WatchNext programs", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error syncing WatchNext programs", e)
         }
     }
 

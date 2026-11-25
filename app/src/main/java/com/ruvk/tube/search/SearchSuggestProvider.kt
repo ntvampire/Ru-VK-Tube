@@ -77,7 +77,7 @@ class SearchSuggestProvider : ContentProvider() {
         try {
             val repository = getTmdbRepository()
             val items = runBlocking {
-                withTimeoutOrNull(2000L) {
+                withTimeoutOrNull(3500L) {
                     withContext(Dispatchers.IO) {
                         repository.search(query.trim())
                     }

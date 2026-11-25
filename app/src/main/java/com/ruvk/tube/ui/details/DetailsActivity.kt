@@ -1,5 +1,6 @@
 package com.ruvk.tube.ui.details
 
+import android.app.Activity
 import android.app.SearchManager
 import android.content.Intent
 import android.graphics.Outline
@@ -12,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
@@ -96,6 +98,32 @@ class DetailsActivity : FragmentActivity() {
     private var isSearchingSources = false
     private var sourcesList = listOf<VideoSource>()
     private var searchSourcesJob: Job? = null
+
+    private val playerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK &&
+            result.data?.getStringExtra(InternalPlayerActivity.EXTRA_RESULT_ACTION) == InternalPlayerActivity.ACTION_REFRESH_STREAM
+        ) {
+            savedStreamUrl = null
+            val item = mediaItem ?: return@registerForActivityResult
+            if (item.mediaType == MediaType.TV) {
+                val s = result.data?.getIntExtra(InternalPlayerActivity.EXTRA_SEASON, savedSeason) ?: savedSeason
+                val e = result.data?.getIntExtra(InternalPlayerActivity.EXTRA_EPISODE, savedEpisode) ?: savedEpisode
+                val epNum = e.coerceAtLeast(1)
+                val sNum = s.coerceAtLeast(1)
+                val targetEpisode = currentEpisodesList.firstOrNull { it.episodeNumber == epNum }
+                    ?: TvEpisode(
+                        id = 0L,
+                        episodeNumber = epNum,
+                        seasonNumber = sNum,
+                        name = "Серия $epNum",
+                        overview = ""
+                    )
+                searchEpisodeSourcesAndFocus(targetEpisode, preservedPositionMs = savedPositionMs)
+            } else {
+                searchSourcesAndFocus(item)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -476,7 +504,11 @@ class DetailsActivity : FragmentActivity() {
 
             // 2. Для сериалов: если сохраненного потока нет или сброшен, сразу запускаем поиск серии
             if (isTv) {
-                val targetEpisodeNum = if (savedEpisode > 0) savedEpisode else 1
+                val targetEpisodeNum = if (savedEpisode > 0 && currentSeasonNumber == savedSeason) {
+                    savedEpisode
+                } else {
+                    currentEpisodeNumber.coerceAtLeast(1)
+                }
                 val targetEpisode = currentEpisodesList.firstOrNull { it.episodeNumber == targetEpisodeNum }
                     ?: currentEpisodesList.firstOrNull()
                 if (targetEpisode != null) {
@@ -679,11 +711,11 @@ class DetailsActivity : FragmentActivity() {
         }
     }
 
-    private fun searchEpisodeSourcesAndFocus(episode: TvEpisode) {
+    private fun searchEpisodeSourcesAndFocus(episode: TvEpisode, preservedPositionMs: Long = 0L) {
         val item = mediaItem ?: return
         currentSeasonNumber = episode.seasonNumber
         currentEpisodeNumber = episode.episodeNumber
-        currentEpisodeSavedPositionMs = 0L
+        currentEpisodeSavedPositionMs = preservedPositionMs
 
         isSearchingSources = true
         sourcesSection.visibility = View.VISIBLE
@@ -762,10 +794,43 @@ class DetailsActivity : FragmentActivity() {
                         RuVkTubeApp.instance.tmdbRepository.getTvDetails(item.id)
                     }
                 }
-                val wasTitleBlank = titleText.text == "Загрузка..." || titleText.text.isNullOrBlank()
+                if (mediaItem?.id != item.id) return@launch
                 mediaItem = detailed
-                if (wasTitleBlank) {
-                    bindMediaItem(detailed)
+
+                if ((titleText.text == "Загрузка..." || titleText.text.isNullOrBlank()) && detailed.title.isNotBlank()) {
+                    titleText.text = detailed.title
+                }
+                if (detailed.originalTitle.isNotBlank() && detailed.originalTitle != detailed.title) {
+                    originalTitleText.visibility = View.VISIBLE
+                    originalTitleText.text = detailed.originalTitle
+                }
+                if (detailed.overview.isNotBlank()) {
+                    overviewText.text = detailed.overview
+                }
+                if (detailed.voteAverage > 0) {
+                    badgeRating.visibility = View.VISIBLE
+                    badgeRating.text = "★ ${String.format("%.1f", detailed.voteAverage)}"
+                }
+                if (detailed.year > 0) {
+                    badgeYear.visibility = View.VISIBLE
+                    badgeYear.text = detailed.year.toString()
+                }
+                if (item.posterUrl.isNullOrBlank() && !detailed.posterUrl.isNullOrBlank()) {
+                    val radiusPx = resources.displayMetrics.density * 10f
+                    posterImage.load(detailed.posterUrl) {
+                        crossfade(300)
+                        placeholder(R.color.surface_card)
+                        error(R.color.surface_card)
+                        transformations(RoundedCornersTransformation(radiusPx))
+                    }
+                }
+                if (item.backdropUrl.isNullOrBlank() && !detailed.backdropUrl.isNullOrBlank()) {
+                    heroBackdrop.load(detailed.backdropUrl) {
+                        crossfade(300)
+                        placeholder(R.color.background_dark)
+                        error(R.color.background_dark)
+                    }
+                    episodeAdapter.defaultBackdropUrl = detailed.backdropUrl
                 }
 
                 if (!detailed.ageRating.isNullOrBlank()) {
@@ -899,7 +964,7 @@ class DetailsActivity : FragmentActivity() {
                 putExtra(InternalPlayerActivity.EXTRA_EPISODE, currentEpisodeNumber)
             }
         }
-        startActivity(intent)
+        playerLauncher.launch(intent)
     }
 
     private fun playSavedStream(streamUrl: String, item: MediaItem, startPosMs: Long) {
@@ -914,8 +979,10 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, streamUrl)
             putExtra(InternalPlayerActivity.EXTRA_TITLE, playTitle)
             putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
+            putExtra(InternalPlayerActivity.EXTRA_QUALITY, "")
             putExtra(InternalPlayerActivity.EXTRA_START_POSITION_MS, startPosMs)
             putExtra(InternalPlayerActivity.EXTRA_IS_TRAILER, false)
+            putExtra(InternalPlayerActivity.EXTRA_IS_SAVED_STREAM, true)
             putExtra(InternalPlayerActivity.EXTRA_POSTER_URL, item.posterUrl)
             putExtra(InternalPlayerActivity.EXTRA_BACKDROP_URL, item.backdropUrl)
             putExtra(InternalPlayerActivity.EXTRA_MOVIE_TITLE, item.title)
@@ -929,7 +996,7 @@ class DetailsActivity : FragmentActivity() {
                 putExtra(InternalPlayerActivity.EXTRA_EPISODE, savedEpisode)
             }
         }
-        startActivity(intent)
+        playerLauncher.launch(intent)
     }
 
     private data class SavedProgress(
