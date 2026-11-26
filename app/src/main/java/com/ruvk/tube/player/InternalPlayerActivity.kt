@@ -62,8 +62,13 @@ class InternalPlayerActivity : AppCompatActivity() {
     private var isDimmed = false
     private var pauseDimJob: Job? = null
     private var hasReachedReady = false
+    private var hasRenderedFirstFrame = false
+    private var hasApplied720pFallback = false
+    private var firstFrameWatchdogJob: Job? = null
     private var playbackFailed = false
     private var isSavedStream = false
+    private var fallbackUrls: ArrayList<String> = arrayListOf()
+    private var fallbackIndex: Int = 0
 
     private var streamUrl: String = ""
     private var title: String = ""
@@ -119,6 +124,8 @@ class InternalPlayerActivity : AppCompatActivity() {
         runtimeMinutes = intent.getIntExtra(EXTRA_RUNTIME_MINUTES, 0)
         preferredPlatform = intent.getStringExtra(EXTRA_PREFERRED_PLATFORM)
         preferredVoiceover = intent.getStringExtra(EXTRA_PREFERRED_VOICEOVER)
+        fallbackUrls = intent.getStringArrayListExtra(EXTRA_FALLBACK_URLS) ?: arrayListOf()
+        fallbackIndex = 0
 
         playerView = findViewById(R.id.player_view)
         playerView.controllerShowTimeoutMs = CONTROLLER_TIMEOUT_MS
@@ -176,6 +183,33 @@ class InternalPlayerActivity : AppCompatActivity() {
             .createMediaSource(MediaItem.fromUri(url))
     }
 
+    private fun isVkStream(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("vk.com") || lower.contains("vkuser") || lower.contains("mycdn") || lower.contains("vkvideo")
+    }
+
+    private fun configureInitialTrackConstraints(selector: DefaultTrackSelector, url: String) {
+        val displayHeight = DeviceCapabilityHelper.getMaxDisplayHeight(this)
+        val builder = selector.buildUponParameters()
+            .setViewportSizeToPhysicalDisplaySize(this, true)
+            .clearVideoSizeConstraints()
+
+        when {
+            displayHeight <= 720 -> {
+                builder.setMaxVideoSize(1280, 720)
+            }
+            isTrailer || isVkStream(url) || displayHeight <= 1080 -> {
+                // Для трейлеров, потоков VK (AVC) и FullHD-приставок сразу ограничиваем профиль до 1080p ДО prepare(),
+                // чтобы не открывать 4K-декодер с последующей поломкой SurfaceView при переключении трека
+                builder.setMaxVideoSize(
+                    DeviceCapabilityHelper.MAX_SAFE_AVC_WIDTH,
+                    DeviceCapabilityHelper.MAX_SAFE_AVC_HEIGHT
+                )
+            }
+        }
+        selector.parameters = builder.build()
+    }
+
     private fun initPlayer() {
         if (streamUrl.isBlank()) {
             finish()
@@ -186,9 +220,13 @@ class InternalPlayerActivity : AppCompatActivity() {
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
-        trackSelector = DefaultTrackSelector(this)
+        trackSelector = DefaultTrackSelector(this).also { selector ->
+            configureInitialTrackConstraints(selector, streamUrl)
+        }
         hasAppliedSafeConstraints = false
         hasReachedReady = false
+        hasRenderedFirstFrame = false
+        hasApplied720pFallback = false
         playbackFailed = false
 
         exoPlayer = ExoPlayer.Builder(this, renderersFactory)
@@ -246,15 +284,24 @@ class InternalPlayerActivity : AppCompatActivity() {
                     checkAndApplySafeVideoConstraints(tracks)
                 }
 
+                override fun onRenderedFirstFrame() {
+                    hasRenderedFirstFrame = true
+                    cancelFirstFrameWatchdog()
+                }
+
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         Player.STATE_BUFFERING -> bufferingBar.visibility = View.VISIBLE
                         Player.STATE_READY -> {
                             hasReachedReady = true
                             bufferingBar.visibility = View.GONE
+                            if (playWhenReady && !hasRenderedFirstFrame) {
+                                startFirstFrameWatchdog()
+                            }
                         }
                         Player.STATE_ENDED -> {
                             bufferingBar.visibility = View.GONE
+                            cancelFirstFrameWatchdog()
                             cancelPauseDimTimer()
                             stopProgressTracking()
                             commitPendingSeek()
@@ -275,7 +322,11 @@ class InternalPlayerActivity : AppCompatActivity() {
                     if (isPlaying) {
                         cancelPauseDimTimer()
                         startProgressTracking()
+                        if (hasReachedReady && !hasRenderedFirstFrame) {
+                            startFirstFrameWatchdog()
+                        }
                     } else {
+                        cancelFirstFrameWatchdog()
                         stopProgressTracking()
                         if (hasReachedReady) {
                             savePlaybackPositionInternal(syncChannels = false)
@@ -286,6 +337,7 @@ class InternalPlayerActivity : AppCompatActivity() {
 
                 override fun onPlayerError(error: PlaybackException) {
                     playbackFailed = true
+                    cancelFirstFrameWatchdog()
                     bufferingBar.visibility = View.GONE
                     cancelPauseDimTimer()
                     stopProgressTracking()
@@ -299,6 +351,70 @@ class InternalPlayerActivity : AppCompatActivity() {
         }
 
         playerView.player = exoPlayer
+    }
+
+    private fun startFirstFrameWatchdog() {
+        if (hasRenderedFirstFrame || firstFrameWatchdogJob?.isActive == true) return
+        firstFrameWatchdogJob = lifecycleScope.launch {
+            delay(FIRST_FRAME_WATCHDOG_MS)
+            if (isFinishing || isDestroyed || hasRenderedFirstFrame) return@launch
+            val player = exoPlayer ?: return@launch
+            if (!player.isPlaying) return@launch
+
+            android.util.Log.w("InternalPlayer", "No video frames rendered within ${FIRST_FRAME_WATCHDOG_MS}ms; applying safe fallback")
+            if (!hasApplied720pFallback) {
+                hasApplied720pFallback = true
+                trackSelector?.let { selector ->
+                    selector.parameters = selector.buildUponParameters()
+                        .setMaxVideoSize(1280, 720)
+                        .setMaxVideoFrameRate(30)
+                        .build()
+                }
+                val pos = player.currentPosition.coerceAtLeast(0L)
+                hasReachedReady = false
+                player.setMediaSource(buildMediaSource(streamUrl), pos)
+                player.prepare()
+                player.playWhenReady = true
+                return@launch
+            }
+
+            if (tryNextFallbackUrl()) {
+                return@launch
+            }
+
+            Toast.makeText(
+                this@InternalPlayerActivity,
+                "Видеодорожка потока не поддерживается устройством",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun cancelFirstFrameWatchdog() {
+        firstFrameWatchdogJob?.cancel()
+        firstFrameWatchdogJob = null
+    }
+
+    private fun tryNextFallbackUrl(): Boolean {
+        while (fallbackIndex < fallbackUrls.size) {
+            val nextUrl = fallbackUrls[fallbackIndex++]
+            if (nextUrl.isNotBlank() && nextUrl != streamUrl) {
+                streamUrl = nextUrl
+                hasReachedReady = false
+                hasRenderedFirstFrame = false
+                hasApplied720pFallback = false
+                hasAppliedSafeConstraints = false
+                playbackFailed = false
+                trackSelector?.let { configureInitialTrackConstraints(it, nextUrl) }
+                exoPlayer?.let { player ->
+                    player.setMediaSource(buildMediaSource(nextUrl), 0L)
+                    player.prepare()
+                    player.playWhenReady = true
+                }
+                return true
+            }
+        }
+        return false
     }
 
     private fun handlePlaybackError(error: PlaybackException) {
@@ -325,6 +441,10 @@ class InternalPlayerActivity : AppCompatActivity() {
                 }
             )
             finish()
+            return
+        }
+
+        if (isTrailer && tryNextFallbackUrl()) {
             return
         }
 
@@ -577,11 +697,11 @@ class InternalPlayerActivity : AppCompatActivity() {
         startPositionMs = 0L
         isSavedStream = false
         hasReachedReady = false
+        hasRenderedFirstFrame = false
+        hasApplied720pFallback = false
         playbackFailed = false
         hasAppliedSafeConstraints = false
-        trackSelector?.let { selector ->
-            selector.parameters = selector.parameters.buildUpon().clearVideoSizeConstraints().build()
-        }
+        trackSelector?.let { configureInitialTrackConstraints(it, streamUrl) }
 
         updateHeaderUi()
 
@@ -804,6 +924,7 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        cancelFirstFrameWatchdog()
         cancelSeekHide()
         commitPendingSeek()
         cancelPauseDimTimer()
@@ -814,6 +935,7 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        cancelFirstFrameWatchdog()
         cancelSeekHide()
         commitPendingSeek()
         cancelPauseDimTimer()
@@ -824,6 +946,7 @@ class InternalPlayerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        cancelFirstFrameWatchdog()
         cancelSeekHide()
         commitPendingSeek()
         cancelNextEpisodeFlow()
@@ -949,6 +1072,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         private const val SEEK_COALESCE_TIMEOUT_MS = 280L
         private const val SEEK_RELEASE_TIMEOUT_MS = 250L
         private const val SEEK_FALLBACK_TIMEOUT_MS = 600L
+        private const val FIRST_FRAME_WATCHDOG_MS = 3000L
 
         const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_TITLE = "extra_title"
@@ -956,6 +1080,7 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_QUALITY = "extra_quality"
         const val EXTRA_START_POSITION_MS = "extra_start_pos"
         const val EXTRA_IS_TRAILER = "extra_is_trailer"
+        const val EXTRA_FALLBACK_URLS = "extra_fallback_urls"
         const val EXTRA_IS_SAVED_STREAM = "extra_is_saved_stream"
         const val EXTRA_POSTER_URL = "extra_poster_url"
         const val EXTRA_BACKDROP_URL = "extra_backdrop_url"

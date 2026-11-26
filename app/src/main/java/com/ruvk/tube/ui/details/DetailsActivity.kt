@@ -931,12 +931,14 @@ class DetailsActivity : FragmentActivity() {
 
             if (trailers.isNotEmpty()) {
                 val best = trailers.first()
+                val fallbacks = ArrayList(trailers.drop(1).take(4).map { it.streamUrl })
                 val intent = Intent(this@DetailsActivity, InternalPlayerActivity::class.java).apply {
                     putExtra(InternalPlayerActivity.EXTRA_STREAM_URL, best.streamUrl)
                     putExtra(InternalPlayerActivity.EXTRA_TITLE, "${item.title} (Трейлер)")
                     putExtra(InternalPlayerActivity.EXTRA_TMDB_ID, item.id)
                     putExtra(InternalPlayerActivity.EXTRA_QUALITY, best.quality)
                     putExtra(InternalPlayerActivity.EXTRA_IS_TRAILER, true)
+                    putStringArrayListExtra(InternalPlayerActivity.EXTRA_FALLBACK_URLS, fallbacks)
                 }
                 startActivity(intent)
             } else {

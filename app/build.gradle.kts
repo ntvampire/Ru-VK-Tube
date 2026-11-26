@@ -12,8 +12,8 @@ android {
         applicationId = "com.ruvk.tube"
         minSdk = 21
         targetSdk = 34
-        versionCode = 35
-        versionName = "1.2.14"
+        versionCode = 36
+        versionName = "1.2.15"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
