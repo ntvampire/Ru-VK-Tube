@@ -6,13 +6,9 @@ import android.content.SharedPreferences
 object AppPreferences {
 
     private const val PREFS_NAME = "ruvk_tube_prefs"
-    private const val KEY_PLAYER_TYPE = "pref_player_type"
     private const val KEY_TMDB_API_KEY = "pref_tmdb_api_key"
     private const val KEY_LAST_UPDATE_CHECK = "pref_last_update_check"
     private const val KEY_AUDIO_COMPRESSION = "pref_audio_compression"
-
-    const val PLAYER_INTERNAL = "internal"
-    const val PLAYER_EXTERNAL = "external"
 
     private lateinit var prefs: SharedPreferences
 
@@ -25,13 +21,6 @@ object AppPreferences {
     var audioCompressionEnabled: Boolean
         get() = prefs.getBoolean(KEY_AUDIO_COMPRESSION, true)
         set(value) = prefs.edit().putBoolean(KEY_AUDIO_COMPRESSION, value).apply()
-
-    var playerType: String
-        get() = prefs.getString(KEY_PLAYER_TYPE, PLAYER_INTERNAL) ?: PLAYER_INTERNAL
-        set(value) = prefs.edit().putString(KEY_PLAYER_TYPE, value).apply()
-
-    val isExternalPlayer: Boolean
-        get() = playerType == PLAYER_EXTERNAL
 
     var tmdbApiKey: String
         get() = prefs.getString(KEY_TMDB_API_KEY, "") ?: ""

@@ -20,6 +20,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -133,6 +134,7 @@ class MainActivity : FragmentActivity() {
 
         checkBackgroundUpdate()
         TvChannelsManager.requestChannelsBrowsable(this)
+        setupBackNavigation()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -733,6 +735,8 @@ class MainActivity : FragmentActivity() {
                 releaseDate = if (f.year > 0) "${f.year}-01-01" else "",
                 year = f.year,
                 voteAverage = f.rating,
+                runtimeMinutes = f.runtimeMinutes,
+                ageRating = f.ageRating,
                 mediaType = if (f.mediaType == "TV") MediaType.TV else MediaType.MOVIE,
                 country = f.country
             )
@@ -749,8 +753,8 @@ class MainActivity : FragmentActivity() {
             var itemRating = h.rating
             var itemOverview = h.overview ?: ""
             var originalTitle = ""
-            var runtime = 0
-            var ageRating: String? = null
+            var runtime = h.runtimeMinutes
+            var ageRating: String? = h.ageRating
             var countryStr = h.country
 
             val isTv = h.mediaType.equals("tv", ignoreCase = true)
@@ -772,8 +776,12 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            // Если постер или метаданные отсутствуют (старые записи), догружаем из TMDB
-            if (itemPoster.isNullOrBlank() && h.tmdbId > 0) {
+            if (runtime == 0 && durMs > 0L) {
+                runtime = (durMs / 60_000L).toInt()
+            }
+
+            // Если постер или метаданные отсутствуют (старые записи), догружаем из TMDB и сохраняем в БД
+            if ((itemPoster.isNullOrBlank() || ageRating.isNullOrBlank() || runtime == 0) && h.tmdbId > 0) {
                 try {
                     val fullItem = if (isTv) {
                         RuVkTubeApp.instance.tmdbRepository.getTvDetails(h.tmdbId)
@@ -786,7 +794,7 @@ class MainActivity : FragmentActivity() {
                     itemRating = fullItem.voteAverage
                     itemOverview = fullItem.overview
                     originalTitle = fullItem.originalTitle
-                    runtime = fullItem.runtimeMinutes
+                    if (fullItem.runtimeMinutes > 0) runtime = fullItem.runtimeMinutes
                     ageRating = fullItem.ageRating
                     countryStr = fullItem.country
 
@@ -798,7 +806,9 @@ class MainActivity : FragmentActivity() {
                             year = itemYear,
                             rating = itemRating,
                             overview = itemOverview,
-                            country = countryStr
+                            country = countryStr,
+                            ageRating = ageRating,
+                            runtimeMinutes = runtime
                         )
                     )
                 } catch (e: Exception) {
@@ -1131,8 +1141,8 @@ class MainActivity : FragmentActivity() {
 
     private fun checkBackgroundUpdate() {
         lifecycleScope.launch {
-            // Проверка обновлений при старте приложения
-            val update = UpdateManager.checkUpdate(force = true)
+            // Фоновая проверка обновлений не чаще 1 раза в сутки (в Настройках — принудительно)
+            val update = UpdateManager.checkUpdate(force = false)
             if (update != null && !isFinishing && !isDestroyed) {
                 showUpdateDialog(update)
             }
@@ -1183,34 +1193,38 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    override fun onBackPressed() {
-        // 1. Если фокус уже в боковом меню -> выход из приложения
-        if (isViewDescendant(currentFocus, sideMenuContainer)) {
-            finish()
-            return
-        }
+    private fun setupBackNavigation() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // 1. Если фокус уже в боковом меню -> выход из приложения
+                if (isViewDescendant(currentFocus, sideMenuContainer)) {
+                    finish()
+                    return
+                }
 
-        // 2. Если фокус в строке поиска или контейнере поиска -> фокус в боковое меню
-        val searchContainer = findViewById<View>(R.id.search_container)
-        if (currentFocus == searchEditText || (searchContainer != null && isViewDescendant(currentFocus, searchContainer))) {
-            focusSideMenu()
-            return
-        }
+                // 2. Если фокус в строке поиска или контейнере поиска -> фокус в боковое меню
+                val searchContainer = findViewById<View>(R.id.search_container)
+                if (currentFocus == searchEditText || (searchContainer != null && isViewDescendant(currentFocus, searchContainer))) {
+                    focusSideMenu()
+                    return
+                }
 
-        // 3. Если фокус в контейнере настроек -> переход в боковое меню
-        if (settingsContainer.visibility == View.VISIBLE && isViewDescendant(currentFocus, settingsContainer)) {
-            focusSideMenu()
-            return
-        }
+                // 3. Если фокус в контейнере настроек -> переход в боковое меню
+                if (settingsContainer.visibility == View.VISIBLE && isViewDescendant(currentFocus, settingsContainer)) {
+                    focusSideMenu()
+                    return
+                }
 
-        // 4. Если фокус в ленте постеров и позиция > 0 -> плавная перемотка ленты на 1-ю карточку (позиция 0)
-        if (posterGridView.selectedPosition > 0) {
-            posterGridView.setSelectedPositionSmooth(0)
-            return
-        }
+                // 4. Если фокус в ленте постеров и позиция > 0 -> плавная перемотка ленты на 1-ю карточку (позиция 0)
+                if (posterGridView.selectedPosition > 0) {
+                    posterGridView.setSelectedPositionSmooth(0)
+                    return
+                }
 
-        // 4. Если уже на 1-й карточке ленты (или в любом другом месте экрана) -> переход в боковое меню
-        focusSideMenu()
+                // 5. Если уже на 1-й карточке ленты (или в любом другом месте экрана) -> переход в боковое меню
+                focusSideMenu()
+            }
+        })
     }
 
     private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()

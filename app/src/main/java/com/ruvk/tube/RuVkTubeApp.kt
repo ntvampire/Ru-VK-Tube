@@ -11,6 +11,7 @@ import com.ruvk.tube.data.api.vk.VkClient
 import com.ruvk.tube.data.db.AppDatabase
 import com.ruvk.tube.data.local.AppPreferences
 import com.ruvk.tube.data.network.NetworkClient
+import com.ruvk.tube.data.update.UpdateManager
 import com.ruvk.tube.domain.search.SearchCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +43,7 @@ class RuVkTubeApp : Application(), ImageLoaderFactory {
             AppDatabase::class.java,
             "ruvk_tube.db"
         )
-        .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+        .addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
         .fallbackToDestructiveMigration()
         .build()
 
@@ -55,6 +56,7 @@ class RuVkTubeApp : Application(), ImageLoaderFactory {
 
         TvChannelsManager.schedulePeriodicSync(this)
         CoroutineScope(Dispatchers.IO).launch {
+            UpdateManager.cleanupDownloadedApk(this@RuVkTubeApp)
             try {
                 // Не конкурируем с первоначальной загрузкой ленты и постеров в MainActivity
                 delay(2500L)

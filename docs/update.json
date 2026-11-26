@@ -1,6 +1,6 @@
 {
-  "versionCode": 34,
-  "versionName": "1.2.13",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.13/RuVK-Hub-1.2.13.apk",
-  "changelog": "Автопереход серий и Play Next (следующая серия), поиск по плейлистам Rutube и альбомам VK (с исправлением кириллицы), плавная перемотка и DiffUtil-списки."
+  "versionCode": 35,
+  "versionName": "1.2.14",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.14/RuVK-Hub-1.2.14.apk",
+  "changelog": "Оффлайн-кэш возрастного рейтинга и длительности в Room, автоочистка временного APK обновления, суточный интервал фоновой проверки и R8-минификация (размер APK снижен вдвое)."
 }

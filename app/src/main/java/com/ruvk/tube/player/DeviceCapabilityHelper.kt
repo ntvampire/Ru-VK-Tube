@@ -2,6 +2,7 @@ package com.ruvk.tube.player
 
 import android.content.Context
 import android.graphics.Point
+import android.os.Build
 import android.view.WindowManager
 
 object DeviceCapabilityHelper {
@@ -20,11 +21,19 @@ object DeviceCapabilityHelper {
     fun getMaxDisplayHeight(context: Context): Int {
         return try {
             val wm = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return 1080
-            val display = wm.defaultDisplay
-            val size = Point()
-            display.getRealSize(size)
-            val maxDim = maxOf(size.x, size.y)
-            val minDim = minOf(size.x, size.y)
+            val (width, height) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bounds = wm.currentWindowMetrics.bounds
+                bounds.width() to bounds.height()
+            } else {
+                @Suppress("DEPRECATION")
+                val display = wm.defaultDisplay
+                val size = Point()
+                @Suppress("DEPRECATION")
+                display.getRealSize(size)
+                size.x to size.y
+            }
+            val maxDim = maxOf(width, height)
+            val minDim = minOf(width, height)
 
             when {
                 maxDim >= 3800 || minDim >= 2100 -> 2160 // 4K UHD

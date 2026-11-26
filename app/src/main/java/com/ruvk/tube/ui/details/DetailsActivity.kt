@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.FragmentActivity
@@ -31,7 +32,6 @@ import com.ruvk.tube.domain.models.TvEpisode
 import com.ruvk.tube.domain.models.TvSeason
 import com.ruvk.tube.domain.models.VideoSource
 import com.ruvk.tube.player.DeviceCapabilityHelper
-import com.ruvk.tube.player.ExternalPlayerLauncher
 import com.ruvk.tube.player.InternalPlayerActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -151,6 +151,7 @@ class DetailsActivity : FragmentActivity() {
 
         initViews()
         setupListeners()
+        setupBackNavigation()
         bindMediaItem(item)
         checkFavoriteStatus(item.id)
         checkHistoryPosition(item.id)
@@ -970,6 +971,8 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
             putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
             putExtra(InternalPlayerActivity.EXTRA_COUNTRY, item.country)
+            putExtra(InternalPlayerActivity.EXTRA_AGE_RATING, item.ageRating)
+            putExtra(InternalPlayerActivity.EXTRA_RUNTIME_MINUTES, item.runtimeMinutes)
             putExtra(InternalPlayerActivity.EXTRA_PREFERRED_PLATFORM, source.platform.name)
             putExtra(InternalPlayerActivity.EXTRA_PREFERRED_VOICEOVER, source.voiceover)
             if (isTv) {
@@ -1005,6 +1008,8 @@ class DetailsActivity : FragmentActivity() {
             putExtra(InternalPlayerActivity.EXTRA_OVERVIEW, item.overview)
             putExtra(InternalPlayerActivity.EXTRA_MEDIA_TYPE, item.mediaType.name)
             putExtra(InternalPlayerActivity.EXTRA_COUNTRY, item.country)
+            putExtra(InternalPlayerActivity.EXTRA_AGE_RATING, item.ageRating)
+            putExtra(InternalPlayerActivity.EXTRA_RUNTIME_MINUTES, item.runtimeMinutes)
             if (isTv) {
                 putExtra(InternalPlayerActivity.EXTRA_SEASON, savedSeason)
                 putExtra(InternalPlayerActivity.EXTRA_EPISODE, savedEpisode)
@@ -1118,7 +1123,9 @@ class DetailsActivity : FragmentActivity() {
                             mediaType = item.mediaType.name,
                             year = item.year,
                             rating = item.voteAverage,
-                            country = item.country
+                            country = item.country,
+                            ageRating = item.ageRating,
+                            runtimeMinutes = item.runtimeMinutes
                         )
                     )
                 }
@@ -1173,39 +1180,45 @@ class DetailsActivity : FragmentActivity() {
         }
     }
 
-    override fun onBackPressed() {
-        val current = currentFocus
-        if (current != null && isViewDescendant(current, filmographySection)) {
-            actorsGridView.requestFocus()
-            return
-        }
-        if (current != null && isViewDescendant(current, actorsSection)) {
-            if (sourcesSection.visibility == View.VISIBLE) {
-                sourcesGridView.requestFocus()
-            } else if (seriesSection.visibility == View.VISIBLE) {
-                episodesGridView.requestFocus()
-            } else {
-                btnWatch.requestFocus()
+    private fun setupBackNavigation() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val current = currentFocus
+                if (current != null && isViewDescendant(current, filmographySection)) {
+                    actorsGridView.requestFocus()
+                    return
+                }
+                if (current != null && isViewDescendant(current, actorsSection)) {
+                    if (sourcesSection.visibility == View.VISIBLE) {
+                        sourcesGridView.requestFocus()
+                    } else if (seriesSection.visibility == View.VISIBLE) {
+                        episodesGridView.requestFocus()
+                    } else {
+                        btnWatch.requestFocus()
+                    }
+                    return
+                }
+                if (current != null && isViewDescendant(current, sourcesFrame)) {
+                    if (seriesSection.visibility == View.VISIBLE) {
+                        episodesGridView.requestFocus()
+                    } else {
+                        btnWatch.requestFocus()
+                    }
+                    return
+                }
+                if (current != null && isViewDescendant(current, episodesGridView)) {
+                    seasonsGridView.requestFocus()
+                    return
+                }
+                if (current != null && isViewDescendant(current, seasonsGridView)) {
+                    btnWatch.requestFocus()
+                    return
+                }
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
             }
-            return
-        }
-        if (current != null && isViewDescendant(current, sourcesFrame)) {
-            if (seriesSection.visibility == View.VISIBLE) {
-                episodesGridView.requestFocus()
-            } else {
-                btnWatch.requestFocus()
-            }
-            return
-        }
-        if (current != null && isViewDescendant(current, episodesGridView)) {
-            seasonsGridView.requestFocus()
-            return
-        }
-        if (current != null && isViewDescendant(current, seasonsGridView)) {
-            btnWatch.requestFocus()
-            return
-        }
-        super.onBackPressed()
+        })
     }
 
     private fun isViewDescendant(view: View?, parent: View?): Boolean {

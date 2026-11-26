@@ -217,9 +217,13 @@ object TvChannelsManager {
                     favEntities.map { f ->
                         async {
                             val isTv = f.mediaType == MediaType.TV.name
-                            val details = fetchCachedDetails(f.tmdbId, isTv)
+                            val needsFetch = f.ageRating.isNullOrBlank() || f.runtimeMinutes == 0 ||
+                                f.overview.isNullOrBlank() || f.country.isNullOrBlank()
+                            val details = if (needsFetch) fetchCachedDetails(f.tmdbId, isTv) else null
                             val overview = (f.overview ?: "").ifBlank { details?.overview ?: "" }
                             val countryStr = f.country?.takeIf { it.isNotBlank() } ?: details?.country
+                            val ageRating = f.ageRating?.takeIf { it.isNotBlank() } ?: details?.ageRating
+                            val runtimeMinutes = if (f.runtimeMinutes > 0) f.runtimeMinutes else (details?.runtimeMinutes ?: 0)
 
                             MediaItem(
                                 id = f.tmdbId,
@@ -231,8 +235,8 @@ object TvChannelsManager {
                                 releaseDate = if (f.year > 0) "${f.year}" else "",
                                 year = f.year,
                                 voteAverage = f.rating,
-                                runtimeMinutes = details?.runtimeMinutes ?: 0,
-                                ageRating = details?.ageRating,
+                                runtimeMinutes = runtimeMinutes,
+                                ageRating = ageRating,
                                 mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
                                 country = countryStr
                             )
@@ -285,10 +289,14 @@ object TvChannelsManager {
                                 }
                             }
 
-                            val details = fetchCachedDetails(h.tmdbId, isTv)
-                            val runtimeMinutes = if (durMs > 0L) (durMs / 60_000L).toInt() else (details?.runtimeMinutes ?: 0)
+                            val localRuntimeMin = if (durMs > 0L) (durMs / 60_000L).toInt() else h.runtimeMinutes
+                            val needsFetch = h.ageRating.isNullOrBlank() || localRuntimeMin == 0 ||
+                                h.overview.isNullOrBlank() || h.country.isNullOrBlank()
+                            val details = if (needsFetch) fetchCachedDetails(h.tmdbId, isTv) else null
+                            val runtimeMinutes = if (localRuntimeMin > 0) localRuntimeMin else (details?.runtimeMinutes ?: 0)
                             val overview = (h.overview ?: "").ifBlank { details?.overview ?: "" }
                             val countryStr = h.country?.takeIf { it.isNotBlank() } ?: details?.country
+                            val ageRating = h.ageRating?.takeIf { it.isNotBlank() } ?: details?.ageRating
 
                             MediaItem(
                                 id = h.tmdbId,
@@ -301,7 +309,7 @@ object TvChannelsManager {
                                 year = h.year,
                                 voteAverage = h.rating,
                                 runtimeMinutes = runtimeMinutes,
-                                ageRating = details?.ageRating,
+                                ageRating = ageRating,
                                 mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
                                 watchPositionMs = posMs,
                                 watchDurationMs = durMs,
@@ -460,15 +468,19 @@ object TvChannelsManager {
                     val internalId = "watch_next_${if (isTv) "TV" else "MOVIE"}_${h.tmdbId}"
                     val existing = existingMap.remove(internalId)
 
-                    val details = fetchCachedDetails(h.tmdbId, isTv)
-                    val runtimeMinutes = when {
+                    val localRuntimeMin = when {
                         durMs > 0L -> (durMs / 60_000L).toInt()
                         target.episodeRuntimeMin > 0 -> target.episodeRuntimeMin
-                        else -> details?.runtimeMinutes ?: 0
+                        else -> h.runtimeMinutes
                     }
+                    val needsFetch = h.ageRating.isNullOrBlank() || localRuntimeMin == 0 ||
+                        (target.episodeOverview.isNullOrBlank() && h.overview.isNullOrBlank()) || h.country.isNullOrBlank()
+                    val details = if (needsFetch) fetchCachedDetails(h.tmdbId, isTv) else null
+                    val runtimeMinutes = if (localRuntimeMin > 0) localRuntimeMin else (details?.runtimeMinutes ?: 0)
                     val overview = (target.episodeOverview?.takeIf { it.isNotBlank() } ?: h.overview ?: "")
                         .ifBlank { details?.overview ?: "" }
                     val countryStr = h.country?.takeIf { it.isNotBlank() } ?: details?.country
+                    val ageRating = h.ageRating?.takeIf { it.isNotBlank() } ?: details?.ageRating
 
                     val mediaItem = MediaItem(
                         id = h.tmdbId,
@@ -481,7 +493,7 @@ object TvChannelsManager {
                         year = h.year,
                         voteAverage = h.rating,
                         runtimeMinutes = runtimeMinutes,
-                        ageRating = details?.ageRating,
+                        ageRating = ageRating,
                         mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
                         watchPositionMs = posMs,
                         watchDurationMs = durMs,

@@ -197,6 +197,20 @@ object UpdateManager {
     }
 
     /**
+     * Удаляет устаревший установочный APK после обновления или при следующем запуске.
+     */
+    fun cleanupDownloadedApk(context: Context) {
+        try {
+            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+            val apkFile = File(dir, "RuVkTube-update.apk")
+            if (apkFile.exists()) {
+                apkFile.delete()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
      * Запускает системный диалог установки APK через FileProvider.
      */
     fun installApk(context: Context, apkFile: File) {

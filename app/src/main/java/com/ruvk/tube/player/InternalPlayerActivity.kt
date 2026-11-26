@@ -82,6 +82,8 @@ class InternalPlayerActivity : AppCompatActivity() {
     private var season: Int = 0
     private var episode: Int = 0
     private var country: String? = null
+    private var ageRating: String? = null
+    private var runtimeMinutes: Int = 0
     private var preferredPlatform: String? = null
     private var preferredVoiceover: String? = null
 
@@ -113,6 +115,8 @@ class InternalPlayerActivity : AppCompatActivity() {
         season = intent.getIntExtra(EXTRA_SEASON, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
         country = intent.getStringExtra(EXTRA_COUNTRY)
+        ageRating = intent.getStringExtra(EXTRA_AGE_RATING)
+        runtimeMinutes = intent.getIntExtra(EXTRA_RUNTIME_MINUTES, 0)
         preferredPlatform = intent.getStringExtra(EXTRA_PREFERRED_PLATFORM)
         preferredVoiceover = intent.getStringExtra(EXTRA_PREFERRED_VOICEOVER)
 
@@ -908,7 +912,9 @@ class InternalPlayerActivity : AppCompatActivity() {
                         episode = episode,
                         lastStreamUrl = streamUrl,
                         updatedAt = now,
-                        country = country
+                        country = country,
+                        ageRating = ageRating,
+                        runtimeMinutes = if (runtimeMinutes > 0) runtimeMinutes else (validDur / 60_000L).toInt()
                     )
                 )
                 // Храним только последние 30 записей истории
@@ -962,6 +968,8 @@ class InternalPlayerActivity : AppCompatActivity() {
         const val EXTRA_SEASON = "extra_season"
         const val EXTRA_EPISODE = "extra_episode"
         const val EXTRA_COUNTRY = "extra_country"
+        const val EXTRA_AGE_RATING = "extra_age_rating"
+        const val EXTRA_RUNTIME_MINUTES = "extra_runtime_minutes"
         const val EXTRA_PREFERRED_PLATFORM = "extra_preferred_platform"
         const val EXTRA_PREFERRED_VOICEOVER = "extra_preferred_voiceover"
 

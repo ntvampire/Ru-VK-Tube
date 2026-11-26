@@ -12,8 +12,8 @@ android {
         applicationId = "com.ruvk.tube"
         minSdk = 21
         targetSdk = 34
-        versionCode = 34
-        versionName = "1.2.13"
+        versionCode = 35
+        versionName = "1.2.14"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -28,7 +28,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

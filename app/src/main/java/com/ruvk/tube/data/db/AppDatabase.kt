@@ -28,7 +28,9 @@ data class HistoryEntity(
     val episode: Int = 0,
     val lastStreamUrl: String,
     val updatedAt: Long = System.currentTimeMillis(),
-    val country: String? = null
+    val country: String? = null,
+    val ageRating: String? = null,
+    val runtimeMinutes: Int = 0
 )
 
 @Entity(
@@ -56,7 +58,9 @@ data class FavoriteEntity(
     val year: Int,
     val rating: Double,
     val addedAt: Long = System.currentTimeMillis(),
-    val country: String? = null
+    val country: String? = null,
+    val ageRating: String? = null,
+    val runtimeMinutes: Int = 0
 )
 
 @Dao
@@ -124,7 +128,7 @@ interface FavoritesDao {
 
 @Database(
     entities = [HistoryEntity::class, FavoriteEntity::class, EpisodeProgressEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -156,6 +160,15 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `watch_history` ADD COLUMN `country` TEXT")
                 db.execSQL("ALTER TABLE `favorites` ADD COLUMN `country` TEXT")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `watch_history` ADD COLUMN `ageRating` TEXT")
+                db.execSQL("ALTER TABLE `watch_history` ADD COLUMN `runtimeMinutes` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `favorites` ADD COLUMN `ageRating` TEXT")
+                db.execSQL("ALTER TABLE `favorites` ADD COLUMN `runtimeMinutes` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }
