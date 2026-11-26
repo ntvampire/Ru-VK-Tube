@@ -1,6 +1,6 @@
 {
-  "versionCode": 36,
-  "versionName": "1.2.15",
-  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.15/RuVK-Hub-1.2.15.apk",
-  "changelog": "Исправлен чёрный экран при воспроизведении трейлеров на ТВ-приставках: предварительное ограничение разрешения до prepare(), watchdog первого кадра с автопереключением на 720p/30fps и резервные источники трейлеров."
+  "versionCode": 37,
+  "versionName": "1.2.16",
+  "apkUrl": "https://github.com/ntvampire/Ru-VK-Tube/releases/download/v1.2.16/RuVK-Hub-1.2.16.apk",
+  "changelog": "Исключены невышедшие фильмы и сериалы изо всех подборок и канала «В тренде», а раздел «Фильмы» переведён на каталог цифровых релизов (4|5) с сортировкой по популярности."
 }

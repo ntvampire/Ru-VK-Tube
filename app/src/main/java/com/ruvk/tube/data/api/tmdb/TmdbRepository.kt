@@ -40,8 +40,14 @@ class TmdbRepository {
     }
 
     suspend fun getPopularMovies(page: Int = 1): List<MediaItem> {
+        val today = currentDateIso()
         return fetchFilteredList(page, forceType = MediaType.MOVIE) { p ->
-            api.getPopularMovies(effectiveApiKey, page = p)
+            api.discoverDigitalMovies(
+                apiKey = effectiveApiKey,
+                maxReleaseDate = today,
+                sortBy = "popularity.desc",
+                page = p
+            )
         }
     }
 
@@ -52,11 +58,12 @@ class TmdbRepository {
     }
 
     suspend fun getNewDigitalReleases(page: Int = 1): List<MediaItem> {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val today = currentDateIso()
         return fetchFilteredList(page, forceType = MediaType.MOVIE) { p ->
-            api.getNewDigitalReleases(
+            api.discoverDigitalMovies(
                 apiKey = effectiveApiKey,
                 maxReleaseDate = today,
+                sortBy = "primary_release_date.desc",
                 page = p
             )
         }
@@ -284,8 +291,10 @@ class TmdbRepository {
     private suspend fun fetchFilteredList(
         startPage: Int,
         forceType: MediaType? = null,
+        requireReleased: Boolean = true,
         fetcher: suspend (page: Int) -> TmdbPageResponse<TmdbMovieDto>
     ): List<MediaItem> {
+        val todayIso = if (requireReleased) currentDateIso() else null
         val result = mutableListOf<MediaItem>()
         var page = startPage
         // Запрашиваем текущую страницу. Если после фильтрации она оказалась пустой (0 элементов),
@@ -293,7 +302,10 @@ class TmdbRepository {
         while (page <= startPage + 1) {
             val response = fetcher(page)
             val filtered = response.results
-                .filter { isAllowedMedia(it) }
+                .filter { dto ->
+                    isAllowedMedia(dto) &&
+                        (todayIso == null || isReleasedOnOrBefore(dto.releaseDate, dto.firstAirDate, todayIso))
+                }
                 .map { it.toMediaItem(forceType = forceType) }
             result.addAll(filtered)
             if (result.isNotEmpty() || page >= response.totalPages) {
@@ -303,6 +315,8 @@ class TmdbRepository {
         }
         return result
     }
+
+    private fun currentDateIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
     private fun TmdbMovieDto.toMediaItem(forceType: MediaType? = null): MediaItem {
         val isTv = forceType == MediaType.TV || mediaType == "tv"
@@ -416,6 +430,27 @@ class TmdbRepository {
     }
 
     companion object {
+        private val ISO_DATE_REGEX = Regex("""^\d{4}-\d{2}-\d{2}$""")
+
+        /**
+         * Проверяет, что фильм или сериал уже вышел (дата релиза <= todayIso).
+         * Тайтлы без полной даты (null, пустая строка, только год) считаются невышедшими.
+         */
+        fun isReleasedOnOrBefore(
+            releaseDate: String?,
+            firstAirDate: String?,
+            todayIso: String
+        ): Boolean {
+            val rawDate = releaseDate?.trim()?.takeIf { it.isNotEmpty() }
+                ?: firstAirDate?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return false
+            val datePart = rawDate.take(10)
+            if (!ISO_DATE_REGEX.matches(datePart)) {
+                return false
+            }
+            return datePart <= todayIso
+        }
+
         private val KNOWN_COUNTRIES = mapOf(
             "US" to "США",
             "GB" to "Великобритания",

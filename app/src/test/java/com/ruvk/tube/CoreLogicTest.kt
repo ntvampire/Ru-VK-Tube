@@ -1,5 +1,6 @@
 package com.ruvk.tube
 
+import com.ruvk.tube.data.api.tmdb.TmdbRepository
 import com.ruvk.tube.data.network.TmdbDns
 import com.ruvk.tube.data.update.UpdateManager
 import com.ruvk.tube.domain.search.SearchCoordinator
@@ -86,5 +87,18 @@ class CoreLogicTest {
         assertTrue(coordinator.isPlaylistEpisodeMatch("02. пилот", 1, 2, playlistHasSeason = true))
         assertTrue(coordinator.isPlaylistEpisodeMatch("серия 2", 1, 2, playlistHasSeason = false))
         assertFalse(coordinator.isPlaylistEpisodeMatch("02. пилот", 1, 2, playlistHasSeason = false))
+    }
+
+    @Test
+    fun `tmdb repository excludes unreleased and undated titles`() {
+        val today = "2026-11-26"
+        assertTrue(TmdbRepository.isReleasedOnOrBefore("2026-11-26", null, today))
+        assertTrue(TmdbRepository.isReleasedOnOrBefore("2025-05-01", null, today))
+        assertTrue(TmdbRepository.isReleasedOnOrBefore(null, "2024-09-10", today))
+        assertFalse(TmdbRepository.isReleasedOnOrBefore("2026-12-18", null, today))
+        assertFalse(TmdbRepository.isReleasedOnOrBefore(null, "2026-12-01", today))
+        assertFalse(TmdbRepository.isReleasedOnOrBefore(null, null, today))
+        assertFalse(TmdbRepository.isReleasedOnOrBefore("", "", today))
+        assertFalse(TmdbRepository.isReleasedOnOrBefore("2026", null, today))
     }
 }

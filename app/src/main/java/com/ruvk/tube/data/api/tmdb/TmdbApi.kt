@@ -13,13 +13,6 @@ interface TmdbApi {
         @Query("page") page: Int = 1
     ): TmdbPageResponse<TmdbMovieDto>
 
-    @GET("movie/popular")
-    suspend fun getPopularMovies(
-        @Query("api_key") apiKey: String,
-        @Query("language") language: String = "ru-RU",
-        @Query("page") page: Int = 1
-    ): TmdbPageResponse<TmdbMovieDto>
-
     @GET("tv/popular")
     suspend fun getPopularTv(
         @Query("api_key") apiKey: String,
@@ -28,7 +21,7 @@ interface TmdbApi {
     ): TmdbPageResponse<TmdbMovieDto>
 
     @GET("discover/movie")
-    suspend fun getNewDigitalReleases(
+    suspend fun discoverDigitalMovies(
         @Query("api_key") apiKey: String,
         @Query("language") language: String = "ru-RU",
         @Query("with_release_type") releaseType: String = "4|5",
